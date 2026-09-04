@@ -214,16 +214,95 @@ h1 { font-family: var(--serif); font-size: 24px; margin: 0 0 2px; }
   top: 104px;
 }
 
-/* A grid, not columns: masonry columns fill top-to-bottom so the reading order jumps about. */
+/* One section at a time: cards of wildly different heights left ragged holes side by side. */
 .settings-layout {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: 24px;
   align-items: start;
 }
 
-@media (max-width: 1150px) {
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  position: sticky;
+  top: 92px;
+}
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-muted);
+  transition: background 0.12s, color 0.12s;
+}
+.settings-nav-item:hover { background: var(--bg-elevated); color: var(--text); }
+.settings-nav-item.active {
+  background: var(--bg);
+  border-color: var(--border-strong);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+.settings-nav-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--accent-soft, rgba(217, 119, 87, 0.12));
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.settings-nav-icon svg { width: 15px; height: 15px; }
+.settings-nav-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.settings-nav-title { font-size: 13px; font-weight: 600; }
+.settings-nav-sub { font-size: 11px; color: var(--text-faint); }
+.settings-nav-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex-shrink: 0;
+}
+
+.settings-panels { min-width: 0; }
+.settings-panel {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 22px 24px;
+  box-shadow: var(--shadow-sm);
+}
+.settings-panel.hidden { display: none; }
+.settings-panel-head { margin-bottom: 4px; }
+.settings-panel-head h2 { margin: 0 0 3px; font-family: var(--serif); font-size: 19px; font-weight: 600; }
+.settings-panel-head p { margin: 0 0 6px; font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
+
+.help-text.guidance { margin-top: 4px; }
+.help-text.guidance a { display: inline-flex; align-items: center; gap: 5px; }
+.help-text.guidance svg { width: 11px; height: 11px; flex-shrink: 0; }
+
+@media (max-width: 1000px) {
   .settings-layout { grid-template-columns: minmax(0, 1fr); }
+  /* A single scrolling strip, since wrapped nav rows read as a jumble. */
+  .settings-nav {
+    position: static;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+  }
+  .settings-nav-item { width: auto; flex-shrink: 0; padding: 8px 12px; }
+  .settings-nav-sub { display: none; }
+  .settings-nav-icon { width: 24px; height: 24px; }
 }
 
 @media (max-width: 1180px) {

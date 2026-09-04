@@ -20,6 +20,7 @@ const state = {
   promptCategory: null,
   promptBaseline: "",
   settingsBaseline: {},
+  settingsSection: "",
   dirty: false,
 };
 
@@ -2032,22 +2033,44 @@ async function loadSettings() {
   state.imageProvider = fields.find((f) => f.key === "IMAGE_PROVIDER")?.value || "local";
   state.settingsBaseline = {};
 
-  const groupsEl = $("settings-groups");
-  groupsEl.innerHTML = "";
+  const shell = $("settings-groups");
+  shell.innerHTML = `<nav class="settings-nav" id="settings-nav"></nav><div class="settings-panels" id="settings-panels"></div>`;
+  const navEl = $("settings-nav");
+  const panelsEl = $("settings-panels");
+
   const groups = {};
   fields.forEach((f) => {
     groups[f.group] = groups[f.group] || [];
     groups[f.group].push(f);
   });
 
-  Object.entries(groups).forEach(([groupName, groupFields]) => {
+  const names = Object.keys(groups);
+  if (!names.includes(state.settingsSection)) state.settingsSection = names[0];
+
+  names.forEach((groupName) => {
+    const groupFields = groups[groupName];
     const meta = SETTINGS_GROUP_META[groupName] || { icon: "circle", description: "" };
-    const card = document.createElement("div");
-    card.className = "card";
-    card.innerHTML = `<div class="card-head">
-        <span class="card-icon">${icon(meta.icon, 17)}</span>
-        <div><h2>${groupName}</h2><p class="card-sub">${meta.description}</p></div>
-      </div>`;
+
+    const missing = groupFields.filter((f) => f.secret && !f.is_set).length;
+    const navItem = document.createElement("button");
+    navItem.type = "button";
+    navItem.className = "settings-nav-item";
+    navItem.dataset.section = groupName;
+    navItem.innerHTML =
+      `<span class="settings-nav-icon">${icon(meta.icon, 15)}</span>` +
+      `<span class="settings-nav-text"><span class="settings-nav-title">${groupName}</span>` +
+      `<span class="settings-nav-sub">${groupFields.length} setting${groupFields.length === 1 ? "" : "s"}</span></span>` +
+      (missing ? `<span class="settings-nav-dot" title="${missing} key not set"></span>` : "");
+    navItem.addEventListener("click", () => showSettingsSection(groupName));
+    navEl.appendChild(navItem);
+
+    const panel = document.createElement("section");
+    panel.className = "settings-panel";
+    panel.dataset.section = groupName;
+    panel.innerHTML = `<header class="settings-panel-head">
+        <h2>${groupName}</h2>
+        <p>${meta.description}</p>
+      </header>`;
 
     groupFields.forEach((f) => {
       const wrap = document.createElement("div");
@@ -2071,56 +2094,76 @@ async function loadSettings() {
 
       const help = document.createElement("div");
       help.className = "help-text";
-      help.innerHTML = f.guidance_url
-        ? `${f.help} <a href="${f.guidance_url}" target="_blank" rel="noopener">${f.guidance}</a>`
-        : `${f.help} ${f.guidance}`;
-      wrap.appendChild(help);
+      help.textContent = f.help;
+      if (f.guidance) {
+        const line = document.createElement("div");
+        line.className = "help-text guidance";
+        line.innerHTML = f.guidance_url
+          ? `<a href="${f.guidance_url}" target="_blank" rel="noopener">${icon("external-link", 11)} ${f.guidance}</a>`
+          : f.guidance;
+        wrap.appendChild(help);
+        wrap.appendChild(line);
+      } else {
+        wrap.appendChild(help);
+      }
 
-      card.appendChild(wrap);
+      panel.appendChild(wrap);
       state.settingsBaseline[f.key] = f.secret ? "" : (f.value || "");
     });
 
-    if (groupName === "Instagram") {
-      const steps = document.createElement("div");
-      steps.className = "setup-steps";
-      steps.innerHTML =
-        `<strong>${icon("list-ordered", 13)} Getting these two values</strong>` +
-        `<ol>
-           <li>In the Instagram app, switch your account to <b>Professional</b> (Business or Creator). A personal account cannot post through the API.</li>
-           <li>Link it to a Facebook Page. Instagram &rarr; Settings &rarr; Sharing to other apps.</li>
-           <li>At <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener">developers.facebook.com/apps</a> create an app, type <b>Business</b>.</li>
-           <li>Open <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener">Graph API Explorer</a>, pick your app, and add these permissions:
-             <code>instagram_basic</code>, <code>instagram_content_publish</code>, <code>pages_show_list</code>, <code>pages_read_engagement</code>.</li>
-           <li>Press <b>Generate Access Token</b> and paste it above.</li>
-           <li>Run <code>me/accounts?fields=instagram_business_account</code> and copy the <code>id</code> into Account ID.</li>
-         </ol>`;
-      card.appendChild(steps);
-
-      const tester = document.createElement("div");
-      tester.className = "connection-test";
-      tester.innerHTML =
-        `<button class="btn-secondary" id="ig-test-btn">${icon("plug-zap", 14)} Test connection</button>` +
-        `<span class="connection-status" id="ig-test-status">Save your details first, then test.</span>`;
-      card.appendChild(tester);
-      tester.querySelector("#ig-test-btn").addEventListener("click", testInstagram);
-    }
-
-    groupsEl.appendChild(card);
+    if (groupName === "Instagram") appendInstagramHelp(panel);
+    panelsEl.appendChild(panel);
   });
 
-  enhanceAllSelects(groupsEl);
+  enhanceAllSelects(shell);
   refreshIcons();
   setDirty(false);
   applySettingsRelevance();
+  showSettingsSection(state.settingsSection);
 
-  groupsEl.addEventListener("input", checkSettingsDirty);
-  groupsEl.addEventListener("change", () => {
+  shell.addEventListener("input", checkSettingsDirty);
+  shell.addEventListener("change", () => {
     checkSettingsDirty();
     applySettingsRelevance();
   });
 
   $("settings-skeleton").classList.add("hidden");
-  groupsEl.classList.remove("hidden");
+  shell.classList.remove("hidden");
+}
+
+function showSettingsSection(name) {
+  state.settingsSection = name;
+  document.querySelectorAll(".settings-nav-item").forEach((b) =>
+    b.classList.toggle("active", b.dataset.section === name)
+  );
+  document.querySelectorAll(".settings-panel").forEach((p) =>
+    p.classList.toggle("hidden", p.dataset.section !== name)
+  );
+}
+
+function appendInstagramHelp(panel) {
+  const steps = document.createElement("div");
+  steps.className = "setup-steps";
+  steps.innerHTML =
+    `<strong>${icon("list-ordered", 13)} Where to get these two values</strong>` +
+    `<ol>
+       <li>In the Instagram app, switch your account to <b>Professional</b> (Business or Creator). A personal account cannot post through the API.</li>
+       <li>Link it to a Facebook Page. Instagram &rarr; Settings &rarr; Sharing to other apps.</li>
+       <li>At <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener">developers.facebook.com/apps</a> create an app, type <b>Business</b>.</li>
+       <li>Open <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener">Graph API Explorer</a>, pick your app, and add these permissions:
+         <code>instagram_basic</code>, <code>instagram_content_publish</code>, <code>pages_show_list</code>, <code>pages_read_engagement</code>.</li>
+       <li>Press <b>Generate Access Token</b> and paste it into the token box above.</li>
+       <li>Run <code>me/accounts?fields=instagram_business_account</code> and copy the <code>id</code> into Account ID.</li>
+     </ol>`;
+  panel.appendChild(steps);
+
+  const tester = document.createElement("div");
+  tester.className = "connection-test";
+  tester.innerHTML =
+    `<button class="btn-secondary" id="ig-test-btn">${icon("plug-zap", 14)} Test connection</button>` +
+    `<span class="connection-status" id="ig-test-status">Save your details first, then test.</span>`;
+  panel.appendChild(tester);
+  tester.querySelector("#ig-test-btn").addEventListener("click", testInstagram);
 }
 
 function buildSettingsInput(field) {
