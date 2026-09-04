@@ -638,7 +638,7 @@ def generate_poem_reel(
             music_file=options.music_file,
         )
         silent = out_dir / "reel_silent.mp4"
-        build_card_clip(card, duration, silent, size=options.size, music_volume=0, motion=False)
+        build_card_clip(card, duration, silent, size=options.size, music_volume=0, motion=False, fade_edges=False)
         mux_audio_video(silent, mixed, video_path)
     else:
         build_card_clip(
@@ -649,6 +649,7 @@ def generate_poem_reel(
             music_file=options.music_file,
             music_volume=options.music_volume,
             motion=False,
+            fade_edges=False,
         )
 
     caption = plan["caption"].strip()

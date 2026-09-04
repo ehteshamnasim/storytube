@@ -107,6 +107,7 @@ def build_card_clip(
     music_volume: float = 0.18,
     music_offset: float = 0.0,
     motion: bool = True,
+    fade_edges: bool = True,
 ) -> Path:
     width, height = (int(p) for p in size.split("x"))
     fade = min(0.8, duration / 3)
@@ -116,18 +117,24 @@ def build_card_clip(
         if motion
         else ""
     )
+    # A fade to black at the edges only helps between scenes; on a single-clip Short it means
+    # the feed thumbnail (frame one) and the loop point (last frame) are both black.
+    fade_video = f"fade=t=in:st=0:d={fade},fade=t=out:st={duration - fade}:d={fade}," if fade_edges else ""
     video_filter = (
         f"scale={width}:{height},"
         f"{zoom}"
-        f"fade=t=in:st=0:d={fade},fade=t=out:st={duration - fade}:d={fade},format=yuv420p"
+        f"{fade_video}format=yuv420p"
     )
 
     command = [FFMPEG_BIN, "-y", "-v", "error", "-loop", "1", "-t", f"{duration}", "-i", str(image)]
 
     if music_file and music_file.exists() and music_volume > 0:
         command += ["-ss", f"{music_offset}", "-t", f"{duration}", "-i", str(music_file)]
+        # Even without the cinematic fade, a hard cut in and out of music can click; a
+        # near-instant fade avoids that without being visible as a fade.
+        audio_fade = fade if fade_edges else min(0.05, duration / 6)
         audio_filter = (
-            f"volume={music_volume},afade=t=in:st=0:d={fade},afade=t=out:st={duration - fade}:d={fade}"
+            f"volume={music_volume},afade=t=in:st=0:d={audio_fade},afade=t=out:st={duration - audio_fade}:d={audio_fade}"
         )
     else:
         command += ["-f", "lavfi", "-t", f"{duration}", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]
