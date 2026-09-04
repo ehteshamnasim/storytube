@@ -35,6 +35,7 @@ from .schemas import (
     GenerateRequest,
     PoemRequest,
     PromptSaveRequest,
+    PublishRequest,
     RemixRequest,
     StorySaveRequest,
     VoicePreviewRequest,
@@ -183,6 +184,7 @@ def list_outputs() -> dict:
 
         caption_path = story_dir / "caption.txt"
         caption = caption_path.read_text(encoding="utf-8") if caption_path.exists() else ""
+        posted = instagram.read_state(story_dir)
 
         size = meta.get("size") or ("1080x1920" if kind == "poem" else "1920x1080")
         try:
@@ -206,6 +208,7 @@ def list_outputs() -> dict:
                 "video_url": f"/output/{story_dir.name}/{final_video.name}" if final_video else None,
                 "images": images,
                 "caption": caption,
+                "instagram": posted or None,
                 "description": meta.get("description") or meta.get("mood", ""),
                 "language": meta.get("language", ""),
                 "category": meta.get("category", ""),
@@ -356,6 +359,54 @@ def instagram_test() -> dict:
         return {"ok": True, **instagram.test_connection(env.get("IG_USER_ID", ""), env.get("IG_ACCESS_TOKEN", ""))}
     except instagram.InstagramError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/outputs/{name}/instagram/publish")
+def instagram_publish(name: str, payload: PublishRequest) -> dict:
+    story_dir = resolve_output_dir(name)
+    video = video_file(story_dir)
+    if video is None:
+        raise HTTPException(status_code=404, detail="This output has no video to post.")
+
+    existing = instagram.read_state(story_dir)
+    if existing.get("media_id") and not payload.force:
+        raise HTTPException(status_code=409, detail="This video has already been posted to Instagram.")
+
+    env = config_store.get_raw_env()
+    user_id, token = env.get("IG_USER_ID", ""), env.get("IG_ACCESS_TOKEN", "")
+    if not user_id or not token:
+        raise HTTPException(status_code=400, detail="Add your Instagram details in Settings first.")
+
+    caption = payload.caption
+    if not caption.strip():
+        caption_path = story_dir / "caption.txt"
+        caption = caption_path.read_text(encoding="utf-8") if caption_path.exists() else story_dir.name
+
+    job = jobs.create_instagram_job(story_dir.name, video, caption, story_dir, user_id, token)
+    return {"job_id": job.id, "name": story_dir.name}
+
+
+@app.get("/api/outputs/{name}/instagram")
+def instagram_status(name: str, refresh: bool = False) -> dict:
+    story_dir = resolve_output_dir(name)
+    state = instagram.read_state(story_dir)
+    if not state.get("media_id"):
+        return {"posted": False}
+
+    if refresh:
+        env = config_store.get_raw_env()
+        try:
+            insights = instagram.get_insights(
+                state["media_id"], env.get("IG_USER_ID", ""), env.get("IG_ACCESS_TOKEN", "")
+            )
+            state["stats"] = insights["stats"]
+            state["permalink"] = insights["permalink"] or state.get("permalink", "")
+            state["stats_at"] = datetime.now().isoformat(timespec="seconds")
+            instagram.write_state(story_dir, state)
+        except instagram.InstagramError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"posted": True, **state}
 
 
 @app.get("/api/poem/limits")

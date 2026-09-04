@@ -142,9 +142,15 @@ and applies immediately without a restart.
 For the Hugging Face token, create a **fine-grained** token with *"Make calls to Inference
 Providers"* enabled — a default token returns 403.
 
-The Instagram keys are optional and only used by **Settings → Instagram → Test connection**,
-which confirms your token and account ID resolve to a Business or Creator account. Automatic
-posting is not implemented; reels are produced for you to upload yourself.
+The Instagram keys enable **Settings → Instagram → Test connection**, which confirms your token
+and account ID resolve to a Business or Creator account, and **Post to Instagram** on any
+finished video. Reels are uploaded straight from your Mac using Meta's resumable upload, so no
+public URL or tunnel is needed. Posts are marked *posted* in Outputs, where **Insights** shows
+views, reach, likes, comments, saves and shares.
+
+Instagram's API has no delete endpoint, so publishing is final — a post can only be removed by
+hand in the app. The app asks you to confirm before posting, and refuses to post the same video
+twice.
 
 ---
 

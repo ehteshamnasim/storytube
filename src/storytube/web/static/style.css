@@ -165,7 +165,7 @@ svg { width: 16px; height: 16px; stroke-width: 2; flex-shrink: 0; }
   background: rgba(240, 238, 230, 0.88);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
-  padding: 20px 34px;
+  padding: 20px 40px;
 }
 
 .page-title-wrap { display: flex; align-items: center; gap: 14px; min-width: 0; }
@@ -188,7 +188,7 @@ svg { width: 16px; height: 16px; stroke-width: 2; flex-shrink: 0; }
 
 .page-body {
   max-width: var(--content-max);
-  padding: 26px 34px 90px;
+  padding: 26px 40px 90px;
 }
 
 h1 { font-family: var(--serif); font-size: 24px; margin: 0 0 2px; }
@@ -1369,6 +1369,29 @@ input.invalid, textarea.invalid {
 .connection-status.ok { color: var(--success); }
 .connection-status.warn { color: #b8863b; }
 .connection-status.error { color: var(--danger); }
+
+.insight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.insight-card {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  text-align: center;
+}
+.insight-value { font-family: var(--serif); font-size: 22px; font-weight: 600; }
+.insight-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+.badge.posted { background: rgba(70, 132, 96, 0.14); border: 1px solid rgba(70, 132, 96, 0.35); color: var(--success); }
 .crop-frame {
   position: relative;
   width: 100%;

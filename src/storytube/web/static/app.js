@@ -11,6 +11,8 @@ const state = {
   musicToken: 0,
   remixTarget: null,
   remixTrack: "",
+  publishTarget: null,
+  insightsTarget: null,
   poemMode: "generate",
   poemBackground: null,
   poemUndrawable: [],
@@ -750,6 +752,172 @@ async function playVoiceSample(provider, language) {
   }
 }
 
+/* ---------------- Instagram publishing ---------------- */
+
+function setupPublish() {
+  const close = () => {
+    $("publish-overlay").classList.add("hidden");
+    $("publish-modal").classList.add("hidden");
+  };
+  $("publish-close").addEventListener("click", close);
+  $("publish-cancel").addEventListener("click", close);
+  $("publish-overlay").addEventListener("click", close);
+  $("publish-start").addEventListener("click", startPublish);
+  $("publish-caption").addEventListener("input", (e) => {
+    const n = e.target.value.length;
+    $("publish-caption-count").textContent = `${n} / 2200`;
+    $("publish-caption-count").classList.toggle("over", n > 2200);
+  });
+
+  const closeInsights = () => {
+    $("insights-overlay").classList.add("hidden");
+    $("insights-modal").classList.add("hidden");
+  };
+  $("insights-close").addEventListener("click", closeInsights);
+  $("insights-overlay").addEventListener("click", closeInsights);
+  $("insights-refresh").addEventListener("click", () => loadInsights(state.insightsTarget, true));
+}
+
+async function openPublishModal(name, caption) {
+  state.publishTarget = name;
+  $("publish-target").textContent = titleCase(name);
+  $("publish-caption").value = caption || "";
+  $("publish-caption").dispatchEvent(new Event("input"));
+  $("publish-progress-track").hidden = true;
+  $("publish-status").hidden = true;
+  $("publish-start").disabled = true;
+  $("publish-account").className = "connection-status";
+  $("publish-account").textContent = "Checking your account…";
+  $("publish-overlay").classList.remove("hidden");
+  $("publish-modal").classList.remove("hidden");
+  refreshIcons();
+
+  try {
+    const res = await fetch("/api/instagram/test", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Could not verify your credentials.");
+    const quota = data.quota_total ? ` · ${data.quota_used ?? 0}/${data.quota_total} posts used today` : "";
+    if (!data.can_publish) throw new Error(`@${data.username} is a ${data.account_type} account and cannot publish.`);
+    $("publish-account").className = "connection-status ok";
+    $("publish-account").textContent = `Posting as @${data.username}${quota}`;
+    $("publish-start").disabled = false;
+  } catch (err) {
+    $("publish-account").className = "connection-status error";
+    $("publish-account").textContent = err.message;
+  }
+}
+
+async function startPublish() {
+  const name = state.publishTarget;
+  const ok = await confirmAction({
+    title: "Post this to Instagram?",
+    message: "It goes live immediately. Instagram's API cannot delete posts, so removing it later means doing it by hand in the app.",
+    confirmLabel: "Post it",
+  });
+  if (!ok) return;
+
+  $("publish-start").disabled = true;
+  $("publish-progress-track").hidden = false;
+  $("publish-status").hidden = false;
+  $("publish-status").textContent = "Starting…";
+  $("publish-progress-fill").style.width = "5%";
+  $("publish-progress-fill").classList.remove("failed");
+
+  const res = await fetch(`/api/outputs/${encodeURIComponent(name)}/instagram/publish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ caption: $("publish-caption").value }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    $("publish-status").textContent = err.detail || "Could not start";
+    $("publish-progress-fill").classList.add("failed");
+    $("publish-start").disabled = false;
+    return;
+  }
+
+  const percents = { checking: 10, container: 25, uploading: 55, processing: 80, publishing: 92, done: 100 };
+  const { job_id } = await res.json();
+  const source = new EventSource(`/api/generate/${job_id}/stream`);
+  source.onmessage = async (msg) => {
+    const event = JSON.parse(msg.data);
+    if (event.type === "progress") {
+      $("publish-status").textContent = event.message;
+      const pct = percents[event.stage];
+      if (pct) $("publish-progress-fill").style.width = `${pct}%`;
+    } else if (event.type === "complete") {
+      source.close();
+      $("publish-progress-fill").style.width = "100%";
+      $("publish-status").textContent = "Posted to Instagram";
+      toast("Posted to Instagram");
+      if (state.activeTab === "outputs") await loadOutputs();
+      setTimeout(() => {
+        $("publish-overlay").classList.add("hidden");
+        $("publish-modal").classList.add("hidden");
+      }, 1200);
+    } else if (event.type === "error") {
+      source.close();
+      $("publish-progress-fill").classList.add("failed");
+      $("publish-status").textContent = event.message;
+      $("publish-start").disabled = false;
+    }
+  };
+}
+
+const INSIGHT_LABELS = {
+  views: "Views",
+  reach: "Reach",
+  likes: "Likes",
+  comments: "Comments",
+  saved: "Saves",
+  shares: "Shares",
+};
+
+async function openInsights(name) {
+  state.insightsTarget = name;
+  $("insights-target").textContent = titleCase(name);
+  $("insights-grid").innerHTML = "";
+  $("insights-note").textContent = "Loading…";
+  $("insights-overlay").classList.remove("hidden");
+  $("insights-modal").classList.remove("hidden");
+  refreshIcons();
+  // Show what we already know, then try Instagram for fresher numbers.
+  await loadInsights(name, false);
+  await loadInsights(name, true);
+}
+
+function renderInsights(data) {
+  const stats = data.stats || {};
+  const entries = Object.entries(INSIGHT_LABELS).filter(([key]) => stats[key] !== undefined);
+  if (entries.length) {
+    $("insights-grid").innerHTML = entries
+      .map(([key, label]) => `<div class="insight-card"><div class="insight-value">${stats[key]}</div><div class="insight-label">${label}</div></div>`)
+      .join("");
+  }
+  $("insights-permalink").href = data.permalink || "#";
+  $("insights-permalink").hidden = !data.permalink;
+  return entries.length;
+}
+
+async function loadInsights(name, refresh) {
+  const note = $("insights-note");
+  if (refresh) note.textContent = "Asking Instagram for the latest…";
+  try {
+    const res = await fetch(`/api/outputs/${encodeURIComponent(name)}/instagram?refresh=${refresh ? "true" : "false"}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Could not load insights.");
+
+    const shown = renderInsights(data);
+    note.textContent = shown
+      ? `Updated ${formatDate(data.stats_at) || "just now"}. Instagram takes a while to report numbers on a new post.`
+      : "Instagram has no numbers for this post yet. Try again in a few minutes.";
+  } catch (err) {
+    // A failed refresh must not blank out figures we already have on disk.
+    const hasCached = $("insights-grid").children.length > 0;
+    note.textContent = hasCached ? `Showing the last saved numbers. ${err.message}` : err.message;
+  }
+}
+
 /* ---------------- Poetry reel ---------------- */
 
 const POEM_LIMITS = { max_chars: 600, max_lines: 12 };
@@ -1182,6 +1350,10 @@ function setupPoetry() {
     openPoemReview();
   });
 
+  $("poem-publish").addEventListener("click", () => {
+    if (state.lastPoemName) openPublishModal(state.lastPoemName, $("poem-caption").value);
+  });
+
   setupCropDragging();
   $("poem-size").addEventListener("change", () => {
     syncCropFrameShape();
@@ -1362,6 +1534,7 @@ async function startPoem() {
 }
 
 async function finishPoem(name) {
+  state.lastPoemName = name;
   $("poem-progress-fill").style.width = "100%";
   $("poem-progress-label").textContent = "Finished";
   $("poem-progress-card").hidden = true;
@@ -1479,6 +1652,9 @@ function setStep(stage) {
 
 function setupGenerate() {
   $("result-goto-outputs").addEventListener("click", () => switchTab("outputs"));
+  $("result-publish").addEventListener("click", () => {
+    if (state.lastStoryName) openPublishModal(state.lastStoryName, "");
+  });
 
   $("generate-btn").addEventListener("click", () => {
     if (!validateStoryForm()) return;
@@ -1699,6 +1875,7 @@ async function startGeneration() {
         $("result-video").src = url;
         $("result-download").href = `/api/outputs/${encodeURIComponent(story_name)}/download`;
         $("result-download").download = `${story_name}.mp4`;
+        state.lastStoryName = story_name;
         toast("Video ready");
       } else if (event.type === "error") {
         const cardIcon = document.querySelector("#progress-card .card-icon");
@@ -2179,8 +2356,11 @@ function renderOutputs() {
       : `<div class="output-thumb-empty">${icon("video-off", 22)}<span>No final video</span></div>`;
 
     const shapeLabel = { portrait: "reel", landscape: "youtube", square: "square" }[o.orientation] || "";
-    const badges = [shapeLabel, o.kind === "poem" ? "poem" : o.category, o.language, o.voice].filter(Boolean)
-      .map((v) => `<span class="badge outline">${v}</span>`).join("");
+    const posted = o.instagram && o.instagram.media_id;
+    const badges =
+      (posted ? `<span class="badge posted">${icon("check", 12)} posted</span>` : "") +
+      [shapeLabel, o.kind === "poem" ? "poem" : o.category, o.language, o.voice].filter(Boolean)
+        .map((v) => `<span class="badge outline">${v}</span>`).join("");
 
     const gallery = (o.images || []).length
       ? `<div class="scene-strip">${o.images
@@ -2227,6 +2407,21 @@ function renderOutputs() {
       remix.title = "Change the background music";
       remix.addEventListener("click", () => openRemixModal(o));
       actions.appendChild(remix);
+    }
+
+    if (o.video_url) {
+      const ig = document.createElement("button");
+      ig.className = "btn-secondary";
+      if (posted) {
+        ig.innerHTML = `${icon("chart-no-axes-column", 14)} Insights`;
+        ig.title = "See how the post is doing";
+        ig.addEventListener("click", () => openInsights(o.name));
+      } else {
+        ig.innerHTML = `${icon("camera", 14)} Post`;
+        ig.title = "Post to Instagram";
+        ig.addEventListener("click", () => openPublishModal(o.name, o.caption));
+      }
+      actions.appendChild(ig);
     }
     const del = document.createElement("button");
     del.className = "btn-danger";
@@ -2502,6 +2697,7 @@ async function init() {
   setupRemix();
   setupConfirm();
   setupPoetry();
+  setupPublish();
 
   await loadStoriesList();
   await loadCategoriesIntoSelect($("opt-category"));
@@ -2549,6 +2745,14 @@ function setupGlobalKeys() {
     }
     if (e.key !== "Escape") return;
     if (confirmResolver) return closeConfirm(false);
+    if (!$("insights-modal").classList.contains("hidden")) {
+      $("insights-overlay").classList.add("hidden");
+      return $("insights-modal").classList.add("hidden");
+    }
+    if (!$("publish-modal").classList.contains("hidden")) {
+      $("publish-overlay").classList.add("hidden");
+      return $("publish-modal").classList.add("hidden");
+    }
     if (!$("poem-crop-modal").classList.contains("hidden")) return closeCropModal();
     if (!$("poem-review-modal").classList.contains("hidden")) return closePoemReview();
     if (!$("remix-modal").classList.contains("hidden")) {

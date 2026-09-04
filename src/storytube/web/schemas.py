@@ -30,6 +30,11 @@ class RemixRequest(BaseModel):
     ambience_volume: float = 0.05
 
 
+class PublishRequest(BaseModel):
+    caption: str = ""
+    force: bool = False
+
+
 class PoemRequest(BaseModel):
     name: str = ""
     poem_text: str

@@ -313,6 +313,7 @@
                 <video id="result-video" controls></video>
                 <div class="output-actions">
                   <a class="btn-secondary" id="result-download" download><i data-lucide="download"></i> Download</a>
+                  <button class="btn-secondary" id="result-publish"><i data-lucide="camera"></i> Post to Instagram</button>
                   <button class="btn-ghost" id="result-goto-outputs"><i data-lucide="library"></i> All outputs</button>
                 </div>
               </div>
@@ -338,7 +339,8 @@
           </div>
         </header>
 
-        <div class="create-layout">
+        <div class="page-body">
+          <div class="create-layout">
           <div class="create-main">
             <div class="card">
               <div class="card-head">
@@ -437,6 +439,7 @@
               <div class="page-actions">
                 <a class="btn-secondary" id="poem-download" download><i data-lucide="download"></i> Download reel</a>
                 <button class="btn-secondary" id="poem-redraw"><i data-lucide="refresh-cw"></i> Try another image</button>
+                <button class="btn-primary" id="poem-publish"><i data-lucide="camera"></i> Post to Instagram</button>
               </div>
             </div>
           </div>
@@ -451,6 +454,7 @@
               <dl class="summary-list" id="poem-summary"></dl>
             </div>
           </aside>
+          </div>
         </div>
       </section>
 
@@ -804,7 +808,7 @@
 
   <div class="drawer-overlay hidden" id="poem-advanced-overlay"></div>
   <aside class="drawer hidden" id="poem-advanced-drawer" aria-label="Advanced reel settings">
-    <div class="drawer-head">
+    <div class="drawer-header">
       <div class="page-title-wrap">
         <span class="page-icon small"><i data-lucide="sliders-horizontal"></i></span>
         <div><h2>Advanced</h2><p class="page-subtitle">Remembered between reels.</p></div>
@@ -906,6 +910,66 @@
     <div class="modal-footer">
       <button class="btn-ghost" id="poem-review-back"><i data-lucide="pencil"></i> Back to edit</button>
       <button class="btn-primary" id="poem-review-start"><i data-lucide="wand-sparkles"></i> Build the reel</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="publish-overlay"></div>
+  <div class="modal hidden" id="publish-modal" role="dialog" aria-modal="true" aria-labelledby="publish-title">
+    <div class="modal-header">
+      <div class="page-title-wrap">
+        <span class="page-icon small"><i data-lucide="camera"></i></span>
+        <div>
+          <h2 id="publish-title">Post to Instagram</h2>
+          <p class="page-subtitle" id="publish-target">—</p>
+        </div>
+      </div>
+      <button class="icon-btn" id="publish-close" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+
+    <div class="modal-body">
+      <div class="notice warn">
+        <i data-lucide="triangle-alert"></i>
+        <span>Instagram has no delete endpoint. Once this is posted it can only be removed by hand in the app.</span>
+      </div>
+      <div id="publish-account" class="connection-status">Checking your account…</div>
+
+      <div class="field-row">
+        <div class="label-row"><label for="publish-caption">Caption</label><span class="counter" id="publish-caption-count">0 / 2200</span></div>
+        <textarea id="publish-caption" rows="10"></textarea>
+        <div class="help-text">Posted as a Reel. AI-generated content is disclosed to Meta automatically.</div>
+      </div>
+
+      <div class="progress-bar-track" id="publish-progress-track" hidden>
+        <div class="progress-bar-fill" id="publish-progress-fill" style="width:0%"></div>
+      </div>
+      <div class="help-text" id="publish-status" hidden></div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-ghost" id="publish-cancel">Cancel</button>
+      <button class="btn-primary" id="publish-start"><i data-lucide="send"></i> Post it</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="insights-overlay"></div>
+  <div class="modal small hidden" id="insights-modal" role="dialog" aria-modal="true" aria-labelledby="insights-title">
+    <div class="modal-header">
+      <div class="page-title-wrap">
+        <span class="page-icon small"><i data-lucide="chart-no-axes-column"></i></span>
+        <div>
+          <h2 id="insights-title">Post insights</h2>
+          <p class="page-subtitle" id="insights-target">—</p>
+        </div>
+      </div>
+      <button class="icon-btn" id="insights-close" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="insight-grid" id="insights-grid"></div>
+      <div class="help-text" id="insights-note"></div>
+    </div>
+    <div class="modal-footer">
+      <a class="btn-ghost" id="insights-permalink" target="_blank" rel="noopener"><i data-lucide="external-link"></i> Open on Instagram</a>
+      <button class="btn-secondary" id="insights-refresh"><i data-lucide="refresh-cw"></i> Refresh</button>
     </div>
   </div>
 
