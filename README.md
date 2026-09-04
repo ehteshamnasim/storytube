@@ -1,10 +1,14 @@
 # Storytube
 
-Turn a written story into a narrated, illustrated YouTube video — locally, on your own machine.
+Turn a written story into a narrated, illustrated YouTube video — or a few lines of poetry into
+a vertical reel — locally, on your own machine.
 
 You give it a story. It plans the scenes with Gemini, draws every scene, narrates it in the
 language and voice you choose, adds music and ambience, stitches everything together with
 motion and crossfades, burns in subtitles, and gives you a finished MP4.
+
+Give it a couplet instead and you get a 9:16 reel with the poem set on the image, background
+music, and a caption with hashtags ready to paste into Instagram.
 
 Everything except scene planning can run **entirely on your own hardware, for free**, with
 models licensed for commercial use — so the videos are safe to monetise.
@@ -18,6 +22,7 @@ models licensed for commercial use — so the videos are safe to monetise.
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Using the web app](#using-the-web-app)
+- [Poetry reels](#poetry-reels)
 - [Using the command line](#using-the-command-line)
 - [Providers you can choose](#providers-you-can-choose)
 - [How a video is built](#how-a-video-is-built)
@@ -130,10 +135,16 @@ and applies immediately without a restart.
 | `HF_TOKEN` | Local images, or Hugging Face provider | https://huggingface.co/settings/tokens |
 | `POLLINATIONS_API_KEY` | Pollinations provider | https://enter.pollinations.ai/keys |
 | `SARVAM_API_KEY` | Sarvam voices | https://indus.sarvam.ai |
+| `IG_USER_ID` | Checking Instagram credentials | Meta Graph API Explorer |
+| `IG_ACCESS_TOKEN` | Checking Instagram credentials | https://developers.facebook.com/docs/instagram-platform/content-publishing |
 | `OUTPUT_DIR` | Optional | Defaults to `output` |
 
 For the Hugging Face token, create a **fine-grained** token with *"Make calls to Inference
 Providers"* enabled — a default token returns 403.
+
+The Instagram keys are optional and only used by **Settings → Instagram → Test connection**,
+which confirms your token and account ID resolve to a Business or Creator account. Automatic
+posting is not implemented; reels are produced for you to upload yourself.
 
 ---
 
@@ -154,12 +165,52 @@ render — a voice that cannot speak your language, a missing API key, music vol
 track selected. Nothing starts until you confirm.
 
 **Outputs** — every video with its description, runtime, scene count, thumbnails of each
-generated scene, and download or delete actions. Click any thumbnail to view it full size.
+generated scene, and download or delete actions. Filter by **Reels & Shorts**, **YouTube** or
+**Square** to separate vertical from landscape work. Click any thumbnail to view it full size.
+**Music** re-renders an existing video with a different background track, reusing the cached
+images and voice-over so it finishes in under a minute.
 
 **Prompts** — edit the scene-planning template per category. Every save is version-archived so
 you can roll back. You can also create new categories here.
 
 **Settings** — all API keys and defaults, each with a link explaining where to obtain it.
+Settings that do not apply to your current providers are marked *inactive* rather than hidden.
+
+---
+
+## Poetry reels
+
+The **Poetry Reel** tab turns two or three lines into a vertical video with the words set on the
+image. Unlike story videos the image does not move — the frame is still, with a gentle fade in
+and out, which suits text on screen.
+
+The form is deliberately short: the poem, the background, and the music. Everything else —
+handle, shape, music volume, pacing, style prompt and image seed — lives under **Advanced** and
+is remembered between reels.
+
+**Background** offers two paths:
+
+- **My own photo** — drag in any JPG, PNG, WEBP or HEIC. **Adjust crop** opens a frame in your
+  reel's exact shape; drag the picture and zoom to choose what stays. A shaded band shows where
+  the poem will sit so you can keep faces clear of the text. This takes about ten seconds.
+- **Generate** — Gemini designs an image to match the poem's mood and FLUX draws it. This takes
+  a few minutes.
+
+Gemini also writes the caption and hashtags, saved alongside the video as `caption.txt`.
+
+Urdu is set in Nastaliq and Hindi in Devanagari. Line breaks are preserved: the type shrinks to
+fit rather than wrapping, because wrapping a verse destroys its metre. Characters no font can
+draw, such as emoji, are dropped from the image and kept in the caption.
+
+From the command line:
+
+```bash
+storytube-poem \
+  --text "दिल की बात कहूँ तो कैसे कहूँ\nये लफ़्ज़ भी अब साथ नहीं देते" \
+  --language Hindi \
+  --handle "@your.poetry" \
+  --music-file assets/indian_sitar_calm.mp3
+```
 
 ---
 
@@ -191,6 +242,9 @@ Useful flags:
 | `--ambience-volume` | Wind ambience level |
 | `--force-replan` | Ignore the cached scene plan |
 | `--force-images` | Redraw all images |
+| `--force-voice` | Re-record all narration |
+| `--no-intro`, `--no-outro` | Skip the opening or closing title card |
+| `--intro-title`, `--intro-subtitle` | Text on the opening card |
 
 Scene plans and images are cached, so re-running only redoes what changed.
 

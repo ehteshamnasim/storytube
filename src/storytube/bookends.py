@@ -106,13 +106,19 @@ def build_card_clip(
     music_file: Path | None = None,
     music_volume: float = 0.18,
     music_offset: float = 0.0,
+    motion: bool = True,
 ) -> Path:
     width, height = (int(p) for p in size.split("x"))
     fade = min(0.8, duration / 3)
 
+    zoom = (
+        f"zoompan=z='min(zoom+0.0008,1.08)':d={int(duration * 25)}:s={width}x{height}:fps=25,"
+        if motion
+        else ""
+    )
     video_filter = (
         f"scale={width}:{height},"
-        f"zoompan=z='min(zoom+0.0008,1.08)':d={int(duration * 25)}:s={width}x{height}:fps=25,"
+        f"{zoom}"
         f"fade=t=in:st=0:d={fade},fade=t=out:st={duration - fade}:d={fade},format=yuv420p"
     )
 

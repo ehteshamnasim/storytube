@@ -3,6 +3,7 @@ const state = {
   categories: [],
   activeTab: "story",
   outputs: [],
+  outputFilter: "all",
   stories: [],
   lightboxImages: [],
   lightboxIndex: 0,
@@ -10,6 +11,9 @@ const state = {
   musicToken: 0,
   remixTarget: null,
   remixTrack: "",
+  poemMode: "generate",
+  poemBackground: null,
+  poemUndrawable: [],
   imageProvider: "local",
   promptCategory: null,
   promptBaseline: "",
@@ -33,6 +37,7 @@ const SETTINGS_GROUP_META = {
   "Story & Scene Planning": { icon: "layers", description: "Turns your story text into scenes: narration lines plus image prompts." },
   "Images": { icon: "image", description: "Which service draws each scene, and which model it uses." },
   "Voice-over": { icon: "mic", description: "Text-to-speech engine used to narrate your story." },
+  "Instagram": { icon: "camera", description: "Optional. Lets the app check your posting credentials. Needs a Business or Creator account." },
   "Advanced": { icon: "sliders-horizontal", description: "Low-level paths. Most people never need to touch these." },
 };
 
@@ -224,7 +229,7 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAllSe
 
 /* ---------------- Tabs ---------------- */
 
-const TABS = ["story", "prompts", "settings", "outputs"];
+const TABS = ["story", "poetry", "prompts", "settings", "outputs"];
 
 function setupTabs() {
   document.querySelectorAll(".nav-item").forEach((btn) => {
@@ -477,6 +482,7 @@ async function loadMusicAssets(selectedPath) {
   });
   if (selectedPath) select.value = selectedPath;
   renderMusicBrowser(data.assets);
+  renderPoemMusic(data.assets);
   updateSummary();
 }
 
@@ -742,6 +748,655 @@ async function playVoiceSample(provider, language) {
     if (requestId !== previewRequestId) return;
     status.textContent = err.message;
   }
+}
+
+/* ---------------- Poetry reel ---------------- */
+
+const POEM_LIMITS = { max_chars: 600, max_lines: 12 };
+const POEM_STYLE_PRESETS = [
+  { label: "Rain & dusk", value: "cinematic atmospheric photography, rain on glass, dusk, painterly, muted blue tones" },
+  { label: "Desert night", value: "vast quiet desert at night, deep indigo sky, distant stars, painterly, minimal" },
+  { label: "Old Delhi", value: "old Indian street at night, warm lamplight, wet stone, cinematic, muted amber tones" },
+  { label: "Misty hills", value: "misty mountain valley at dawn, soft fog, muted greens and greys, painterly" },
+  { label: "Empty room", value: "empty room with a single window, dust in a shaft of light, muted warm greys, still life" },
+  { label: "Ocean dark", value: "dark calm ocean at night under moonlight, long exposure, deep teal and silver" },
+];
+
+function poemLines() {
+  return $("poem-text").value
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((l) => l.replace(/[ \t]+/g, " ").trim())
+    .filter(Boolean);
+}
+
+function poemDuration(lines) {
+  return Math.min(60, Math.max(4, lines.length * parseFloat($("poem-pace").value)));
+}
+
+function renderPoemPreview() {
+  const lines = poemLines();
+  const chars = $("poem-text").value.length;
+  const handle = $("poem-handle").value.trim();
+
+  $("poem-counter").textContent = `${lines.length} ${lines.length === 1 ? "line" : "lines"} · ${chars} characters`;
+  $("poem-counter").classList.toggle("over", chars > POEM_LIMITS.max_chars || lines.length > POEM_LIMITS.max_lines);
+  $("poem-duration-hint").textContent = lines.length
+    ? `Reel will be about ${Math.round(poemDuration(lines))} seconds.`
+    : "Reel length follows the number of lines.";
+
+  const preview = $("poem-preview");
+  preview.innerHTML = "";
+  if (!lines.length) {
+    preview.innerHTML = `<span class="poem-preview-empty">Your poem appears here</span>`;
+  } else {
+    lines.forEach((line) => {
+      const el = document.createElement("div");
+      el.className = line.length > 42 ? "poem-line wrapped" : "poem-line";
+      el.textContent = line;
+      el.dir = "auto";
+      preview.appendChild(el);
+    });
+    if (handle) {
+      const h = document.createElement("div");
+      h.className = "poem-handle";
+      h.textContent = handle;
+      preview.appendChild(h);
+    }
+  }
+
+  const shape = $("poem-size").options[$("poem-size").selectedIndex]?.textContent || "";
+  const track = $("poem-music-browser").dataset.selected;
+  const summary = [
+    ["Background", state.poemMode === "upload" ? state.poemBackground?.name || "Not chosen yet" : "Generated"],
+    ["Shape", shape],
+    ["Music", track ? titleCase(track.split("/").pop().replace(/\.[^.]+$/, "")) : "None"],
+    ["Length", lines.length ? `${Math.round(poemDuration(lines))}s` : "—"],
+  ];
+  $("poem-summary").innerHTML = summary
+    .map(([k, v]) => `<div class="summary-row"><dt>${k}</dt><dd>${escapeHtml(String(v))}</dd></div>`)
+    .join("");
+}
+
+function poemWarnings(lines) {
+  const warnings = [];
+  const chars = $("poem-text").value.length;
+  const usingOwnImage = state.poemMode === "upload";
+
+  if (!lines.length) warnings.push(["danger", "Write a line or two of poetry first."]);
+  if (chars > POEM_LIMITS.max_chars) {
+    warnings.push(["danger", `That is ${chars} characters. Keep it under ${POEM_LIMITS.max_chars} so the words stay readable.`]);
+  }
+  if (lines.length > POEM_LIMITS.max_lines) {
+    warnings.push(["danger", `That is ${lines.length} lines. Keep it to ${POEM_LIMITS.max_lines} or fewer.`]);
+  }
+  if (usingOwnImage && !state.poemBackground) {
+    warnings.push(["danger", "Choose a photo, or switch back to Generate."]);
+  }
+  const longest = lines.reduce((a, b) => (b.length > a.length ? b : a), "");
+  if (longest.length > 48) {
+    warnings.push(["warn", "One line is very long, so it may be split across two lines and lose its rhythm."]);
+  }
+  if (state.poemUndrawable?.length) {
+    warnings.push(["warn", `These characters cannot be drawn and will be skipped: ${state.poemUndrawable.join(" ")}`]);
+  }
+  if (usingOwnImage && state.poemBackground) {
+    const [w, h] = $("poem-size").value.split("x").map(Number);
+    const yours = state.poemBackground.width / state.poemBackground.height;
+    if (Math.abs(yours - w / h) > 0.25) {
+      warnings.push(["info", "Your photo is a different shape. Drag it in the frame to choose what stays."]);
+    }
+    const cover = Math.max(w / state.poemBackground.width, h / state.poemBackground.height) * state.poemBackground.zoom;
+    if (cover > 1.6) {
+      warnings.push(["warn", "Your photo is being enlarged a lot, so the reel may look soft. A bigger photo or less zoom will look sharper."]);
+    }
+  }
+  const geminiSet = state.config.find((f) => f.key === "GEMINI_API_KEY")?.is_set;
+  if (!geminiSet && !usingOwnImage) {
+    warnings.push(["danger", "No Gemini key is saved. Add it in Settings, it plans the image and writes the caption."]);
+  } else if (!geminiSet) {
+    warnings.push(["info", "No Gemini key, so the caption will just be your poem plus general hashtags."]);
+  }
+  return warnings;
+}
+
+function gatherPoemOptions() {
+  return {
+    poem_text: $("poem-text").value,
+    language: $("poem-language").value,
+    style: $("poem-style").value,
+    size: $("poem-size").value,
+    seconds_per_line: parseFloat($("poem-pace").value),
+    music_file: $("poem-music-browser").dataset.selected || null,
+    music_volume: parseFloat($("poem-music-volume").value),
+    handle: $("poem-handle").value.trim(),
+    seed: parseInt($("poem-seed").value, 10),
+    background_file: state.poemBackground?.path || null,
+    focus_x: state.poemBackground?.focusX ?? 0.5,
+    focus_y: state.poemBackground?.focusY ?? 0.5,
+    zoom: state.poemBackground?.zoom ?? 1,
+  };
+}
+
+/* Reel defaults are remembered so you never retype your handle or re-pick a track. */
+const POEM_PREFS_KEY = "storytube.poem.prefs";
+const POEM_PREF_FIELDS = ["poem-language", "poem-style", "poem-size", "poem-handle", "poem-music-volume", "poem-pace", "poem-seed"];
+
+function savePoemPrefs() {
+  const prefs = {};
+  POEM_PREF_FIELDS.forEach((id) => { prefs[id] = $(id).value; });
+  prefs.music = $("poem-music-browser").dataset.selected || "";
+  prefs.mode = state.poemMode || "generate";
+  try {
+    localStorage.setItem(POEM_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    /* private mode or full quota; defaults simply will not persist */
+  }
+}
+
+function loadPoemPrefs() {
+  let prefs;
+  try {
+    prefs = JSON.parse(localStorage.getItem(POEM_PREFS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+  POEM_PREF_FIELDS.forEach((id) => {
+    if (prefs[id] !== undefined && $(id)) $(id).value = prefs[id];
+  });
+  if (prefs.music) $("poem-music-browser").dataset.selected = prefs.music;
+  $("poem-music-out").textContent = `${Math.round($("poem-music-volume").value * 100)}%`;
+  $("poem-pace-out").textContent = `${Number($("poem-pace").value).toFixed(1)}s`;
+  $("poem-seed-out").textContent = $("poem-seed").value;
+  return prefs;
+}
+
+function setPoemMode(mode) {
+  state.poemMode = mode;
+  document.querySelectorAll("#poem-bg-segmented .segment").forEach((s) =>
+    s.classList.toggle("active", s.dataset.value === mode)
+  );
+  $("poem-bg-upload").hidden = mode !== "upload";
+  $("poem-bg-generate").hidden = mode !== "generate";
+  savePoemPrefs();
+  renderPoemPreview();
+}
+
+/* Mirrors prepare_background(): scale to cover, multiply by zoom, then offset the
+   crop window by the focus fraction. Pixel positioning keeps preview and output identical. */
+function cropGeometry() {
+  const bg = state.poemBackground;
+  const frame = $("poem-crop-frame").getBoundingClientRect();
+  const cover = Math.max(frame.width / bg.width, frame.height / bg.height) * bg.zoom;
+  const displayWidth = bg.width * cover;
+  const displayHeight = bg.height * cover;
+  return {
+    frame,
+    displayWidth,
+    displayHeight,
+    overflowX: Math.max(0, displayWidth - frame.width),
+    overflowY: Math.max(0, displayHeight - frame.height),
+  };
+}
+
+function applyCrop() {
+  const bg = state.poemBackground;
+  if (!bg || $("poem-crop-modal").classList.contains("hidden")) return;
+  const geo = cropGeometry();
+  const img = $("poem-bg-thumb");
+  img.style.width = `${geo.displayWidth}px`;
+  img.style.height = `${geo.displayHeight}px`;
+  img.style.left = `${-geo.overflowX * bg.focusX}px`;
+  img.style.top = `${-geo.overflowY * bg.focusY}px`;
+  $("poem-zoom-out").textContent = `${bg.zoom.toFixed(2)}×`;
+}
+
+function setupCropDragging() {
+  const frame = $("poem-crop-frame");
+  let dragging = null;
+
+  frame.addEventListener("pointerdown", (e) => {
+    if (!state.poemBackground) return;
+    const bg = state.poemBackground;
+    const geo = cropGeometry();
+    dragging = { x: e.clientX, y: e.clientY, fx: bg.focusX, fy: bg.focusY, geo };
+    frame.classList.add("dragging");
+    frame.setPointerCapture(e.pointerId);
+  });
+
+  frame.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const bg = state.poemBackground;
+    // Dragging the picture right reveals what sits to its left, hence the sign flip.
+    if (dragging.geo.overflowX > 0) {
+      bg.focusX = Math.min(1, Math.max(0, dragging.fx - (e.clientX - dragging.x) / dragging.geo.overflowX));
+    }
+    if (dragging.geo.overflowY > 0) {
+      bg.focusY = Math.min(1, Math.max(0, dragging.fy - (e.clientY - dragging.y) / dragging.geo.overflowY));
+    }
+    applyCrop();
+  });
+
+  ["pointerup", "pointercancel", "pointerleave"].forEach((ev) =>
+    frame.addEventListener(ev, () => {
+      dragging = null;
+      frame.classList.remove("dragging");
+    })
+  );
+
+  $("poem-zoom").addEventListener("input", (e) => {
+    if (!state.poemBackground) return;
+    state.poemBackground.zoom = parseFloat(e.target.value);
+    applyCrop();
+  });
+
+  $("poem-crop-reset").addEventListener("click", () => {
+    if (!state.poemBackground) return;
+    Object.assign(state.poemBackground, { focusX: 0.5, focusY: 0.5, zoom: 1 });
+    $("poem-zoom").value = 1;
+    applyCrop();
+  });
+
+  window.addEventListener("resize", applyCrop);
+}
+
+function syncCropFrameShape() {
+  const [w, h] = $("poem-size").value.split("x").map(Number);
+  $("poem-crop-frame").style.aspectRatio = `${w} / ${h}`;
+  applyCrop();
+}
+
+async function uploadPoemBackground(file) {
+  if (!file) return;
+  if (!file.type.startsWith("image/") && !/\.(jpe?g|png|webp|heic|heif|avif|tiff?|bmp)$/i.test(file.name)) {
+    toast("That is not an image file", "error");
+    return;
+  }
+  const drop = $("poem-drop");
+  drop.classList.add("dragging");
+  const body = new FormData();
+  body.append("file", file);
+  try {
+    const res = await fetch("/api/poem/background", { method: "POST", body });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Upload failed");
+    state.poemBackground = {
+      path: data.path,
+      url: data.url,
+      name: file.name,
+      width: data.width,
+      height: data.height,
+      focusX: 0.5,
+      focusY: 0.5,
+      zoom: 1,
+    };
+    $("poem-bg-thumb").src = data.url;
+    $("poem-bg-chip").src = data.url;
+    $("poem-bg-name").textContent = file.name;
+    $("poem-bg-dims").textContent = `${data.width} × ${data.height}`;
+    $("poem-zoom").value = 1;
+    $("poem-bg-preview").hidden = false;
+    drop.hidden = true;
+    renderPoemPreview();
+    toast("Photo ready");
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    drop.classList.remove("dragging");
+    refreshIcons();
+  }
+}
+
+function openCropModal() {
+  if (!state.poemBackground) return;
+  $("poem-crop-overlay").classList.remove("hidden");
+  $("poem-crop-modal").classList.remove("hidden");
+  syncCropFrameShape();
+  refreshIcons();
+}
+
+function closeCropModal() {
+  $("poem-crop-overlay").classList.add("hidden");
+  $("poem-crop-modal").classList.add("hidden");
+  renderPoemPreview();
+}
+
+function clearPoemBackground() {
+  state.poemBackground = null;
+  $("poem-bg-preview").hidden = true;
+  $("poem-drop").hidden = false;
+  $("poem-bg-input").value = "";
+  renderPoemPreview();
+}
+
+function setupPoetry() {
+  const presets = $("poem-style-presets");
+  POEM_STYLE_PRESETS.forEach(({ label, value }) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip";
+    chip.textContent = label;
+    chip.addEventListener("click", () => {
+      presets.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+      chip.classList.add("active");
+      $("poem-style").value = value;
+      savePoemPrefs();
+    });
+    presets.appendChild(chip);
+  });
+
+  ["poem-text", "poem-handle", "poem-pace"].forEach((id) =>
+    $(id).addEventListener("input", renderPoemPreview)
+  );
+  POEM_PREF_FIELDS.forEach((id) => $(id).addEventListener("change", savePoemPrefs));
+
+  $("poem-pace").addEventListener("input", (e) => {
+    $("poem-pace-out").textContent = `${Number(e.target.value).toFixed(1)}s`;
+  });
+  $("poem-music-volume").addEventListener("input", (e) => {
+    $("poem-music-out").textContent = Number(e.target.value) === 0 ? "Off" : `${Math.round(e.target.value * 100)}%`;
+  });
+  $("poem-seed").addEventListener("input", (e) => {
+    $("poem-seed-out").textContent = e.target.value;
+  });
+
+  document.querySelectorAll("#poem-bg-segmented .segment").forEach((seg) =>
+    seg.addEventListener("click", () => setPoemMode(seg.dataset.value))
+  );
+
+  const drop = $("poem-drop");
+  drop.addEventListener("click", () => $("poem-bg-input").click());
+  $("poem-bg-input").addEventListener("change", (e) => uploadPoemBackground(e.target.files[0]));
+  $("poem-bg-clear").addEventListener("click", clearPoemBackground);
+  $("poem-crop-open").addEventListener("click", openCropModal);
+  $("poem-crop-close").addEventListener("click", closeCropModal);
+  $("poem-crop-done").addEventListener("click", closeCropModal);
+  $("poem-crop-overlay").addEventListener("click", closeCropModal);
+
+  $("poem-advanced-toggle").addEventListener("click", () => {
+    $("poem-advanced-overlay").classList.remove("hidden");
+    $("poem-advanced-drawer").classList.remove("hidden");
+    refreshIcons();
+  });
+  const closeAdvanced = () => {
+    $("poem-advanced-overlay").classList.add("hidden");
+    $("poem-advanced-drawer").classList.add("hidden");
+    renderPoemPreview();
+  };
+  $("poem-advanced-close").addEventListener("click", closeAdvanced);
+  $("poem-advanced-overlay").addEventListener("click", closeAdvanced);
+  ["dragenter", "dragover"].forEach((ev) =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("dragging"); })
+  );
+  ["dragleave", "drop"].forEach((ev) =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("dragging"); })
+  );
+  drop.addEventListener("drop", (e) => uploadPoemBackground(e.dataTransfer.files[0]));
+
+  $("poem-music-upload-btn").addEventListener("click", () => $("poem-music-upload-input").click());
+  $("poem-music-upload-input").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const btn = $("poem-music-upload-btn");
+    btn.innerHTML = `${icon("loader-circle", 14)} Uploading…`;
+    refreshIcons();
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const res = await fetch("/api/assets/upload", { method: "POST", body });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Upload failed");
+      $("poem-music-browser").dataset.selected = `assets/${data.path.split("/").pop()}`;
+      await loadMusicAssets();
+      savePoemPrefs();
+      toast("Track added");
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      btn.innerHTML = `${icon("upload", 14)} Upload your own track`;
+      refreshIcons();
+      e.target.value = "";
+    }
+  });
+
+  $("poem-generate-btn").addEventListener("click", openPoemReview);
+  $("poem-review-back").addEventListener("click", closePoemReview);
+  $("poem-review-close").addEventListener("click", closePoemReview);
+  $("poem-review-overlay").addEventListener("click", closePoemReview);
+  $("poem-review-start").addEventListener("click", startPoem);
+
+  $("poem-copy-caption").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText($("poem-caption").value);
+      toast("Caption copied");
+    } catch {
+      $("poem-caption").select();
+      toast("Press Cmd+C to copy", "error");
+    }
+  });
+
+  $("poem-redraw").addEventListener("click", () => {
+    const next = (parseInt($("poem-seed").value, 10) + 1) % 100;
+    $("poem-seed").value = next;
+    $("poem-seed-out").textContent = next;
+    openPoemReview();
+  });
+
+  setupCropDragging();
+  $("poem-size").addEventListener("change", () => {
+    syncCropFrameShape();
+    renderPoemPreview();
+  });
+
+  const prefs = loadPoemPrefs();
+  // Your own photo is both the fast path and the usual case, so it leads.
+  setPoemMode(prefs.mode || "upload");
+  renderPoemPreview();
+}
+
+function renderPoemMusic(assets) {
+  const browser = $("poem-music-browser");
+  const selected = browser.dataset.selected || "";
+  browser.innerHTML = "";
+
+  const entries = [{ path: "", label: "No music" }].concat(
+    assets.map((f) => ({ path: `assets/${f}`, label: titleCase(f.replace(/\.[^.]+$/, "")) }))
+  );
+  entries.forEach(({ path, label }) => {
+    const item = document.createElement("div");
+    item.className = path === selected ? "music-item selected" : "music-item";
+
+    const play = document.createElement("button");
+    play.type = "button";
+    play.className = "music-play";
+    play.dataset.path = path;
+    play.disabled = !path;
+    play.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleMusicPlayback(path);
+    });
+
+    const name = document.createElement("span");
+    name.className = "music-name";
+    name.textContent = label;
+
+    item.appendChild(play);
+    item.appendChild(name);
+    if (path === selected) {
+      const check = document.createElement("span");
+      check.className = "music-check";
+      check.innerHTML = icon("check", 15);
+      item.appendChild(check);
+    }
+    item.addEventListener("click", () => {
+      browser.dataset.selected = path;
+      renderPoemMusic(assets);
+      savePoemPrefs();
+      renderPoemPreview();
+    });
+    browser.appendChild(item);
+  });
+  syncMusicIcons();
+}
+
+async function openPoemReview() {
+  const lines = poemLines();
+
+  // The server owns the real rules, so ask it rather than duplicating them here.
+  try {
+    const res = await fetch("/api/poem/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(gatherPoemOptions()),
+    });
+    const check = await res.json();
+    state.poemUndrawable = check.undrawable || [];
+  } catch {
+    state.poemUndrawable = [];
+  }
+
+  const warnings = poemWarnings(lines);
+  const blocking = warnings.some(([kind]) => kind === "danger");
+
+  $("poem-review-warnings").innerHTML = warnings
+    .map(([kind, text]) => `<div class="notice ${kind}">${icon(kind === "info" ? "info" : "triangle-alert", 15)}<span>${escapeHtml(text)}</span></div>`)
+    .join("");
+
+  $("poem-review-lines").innerHTML = lines.length
+    ? lines.map((l) => `<div class="poem-line" dir="auto">${escapeHtml(l)}</div>`).join("")
+    : `<span class="poem-preview-empty">Nothing to draw yet</span>`;
+
+  const opts = gatherPoemOptions();
+  const usingOwnImage = state.poemMode === "upload";
+  const rows = [
+    ["Language", opts.language],
+    ["Background", usingOwnImage ? state.poemBackground?.name || "Your photo" : "Generated by FLUX"],
+    ["Shape", $("poem-size").options[$("poem-size").selectedIndex].textContent],
+    ["Music", opts.music_file ? `${titleCase(opts.music_file.split("/").pop().replace(/\.[^.]+$/, ""))} at ${Math.round(opts.music_volume * 100)}%` : "None"],
+    ["Handle", opts.handle || "None"],
+    ["Length", `${Math.round(poemDuration(lines))}s`],
+  ];
+  $("poem-review-rows").innerHTML = rows
+    .map(([k, v]) => `<div class="review-row"><dt>${k}</dt><dd>${escapeHtml(String(v))}</dd></div>`)
+    .join("");
+
+  if (usingOwnImage) {
+    $("poem-review-estimate").innerHTML =
+      `${icon("zap", 15)}<span>Your own photo, so there is no image to draw. About 20 seconds.</span>`;
+  } else {
+    const [w, h] = opts.size.split("x").map(Number);
+    const minutes = Math.max(1, Math.round((60 + 100 * ((w * h) / (1920 * 1080)) + 20) / 60));
+    $("poem-review-estimate").innerHTML =
+      `${icon("clock", 15)}<span>One image to draw, so roughly ${minutes}–${minutes * 2} minutes. Switch to your own photo to skip the wait.</span>`;
+  }
+
+  $("poem-review-start").disabled = blocking;
+  $("poem-review-overlay").classList.remove("hidden");
+  $("poem-review-modal").classList.remove("hidden");
+  refreshIcons();
+}
+
+function closePoemReview() {
+  $("poem-review-overlay").classList.add("hidden");
+  $("poem-review-modal").classList.add("hidden");
+}
+
+function setPoemBusy(busy) {
+  $("poem-generate-btn").disabled = busy;
+  $("poem-redraw").disabled = busy;
+  $("poem-generate-btn").innerHTML = busy
+    ? `${icon("loader-circle", 14)} Building…`
+    : `${icon("wand-sparkles", 14)} Make reel`;
+  refreshIcons();
+}
+
+async function startPoem() {
+  closePoemReview();
+  setPoemBusy(true);
+
+  $("poem-result-card").hidden = true;
+  $("poem-progress-card").hidden = false;
+  $("poem-error").hidden = true;
+  $("poem-progress-fill").style.width = "5%";
+  $("poem-progress-fill").classList.remove("failed");
+  $("poem-progress-label").textContent = "Starting…";
+  $("poem-progress-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+  let payload;
+  try {
+    const res = await fetch("/api/poem", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(gatherPoemOptions()),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Server returned ${res.status}`);
+    }
+    payload = await res.json();
+  } catch (err) {
+    failPoem(err.message);
+    return;
+  }
+
+  const percents = { planning: 15, image: 55, typography: 75, video: 90, done: 100 };
+  const source = new EventSource(`/api/generate/${payload.job_id}/stream`);
+  source.onmessage = (msg) => {
+    const event = JSON.parse(msg.data);
+    if (event.type === "progress") {
+      $("poem-progress-label").textContent = event.message;
+      const pct = percents[event.stage];
+      if (pct) $("poem-progress-fill").style.width = `${pct}%`;
+    } else if (event.type === "complete") {
+      source.close();
+      finishPoem(payload.name);
+    } else if (event.type === "error") {
+      source.close();
+      failPoem(event.message);
+    }
+  };
+  source.onerror = () => {
+    source.close();
+    failPoem("Lost contact with the server.");
+  };
+}
+
+async function finishPoem(name) {
+  $("poem-progress-fill").style.width = "100%";
+  $("poem-progress-label").textContent = "Finished";
+  $("poem-progress-card").hidden = true;
+  setPoemBusy(false);
+
+  const res = await fetch("/api/outputs");
+  const { outputs } = await res.json();
+  const made = outputs.find((o) => o.name === name);
+
+  $("poem-result-card").hidden = false;
+  $("poem-result-video").src = `${made?.video_url || `/output/${name}/reel.mp4`}?t=${Date.now()}`;
+  $("poem-result-mood").textContent = made?.description ? `Mood: ${made.description}` : "Ready to post";
+  $("poem-caption").value = made?.caption || "";
+  $("poem-download").href = `/api/outputs/${encodeURIComponent(name)}/download`;
+  $("poem-download").download = `${name}.mp4`;
+  $("poem-result-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  toast("Reel ready");
+  loadOutputCount();
+  refreshIcons();
+}
+
+function failPoem(message) {
+  $("poem-progress-fill").style.width = "100%";
+  $("poem-progress-fill").classList.add("failed");
+  $("poem-progress-label").textContent = "Failed";
+  $("poem-error").hidden = false;
+  $("poem-error-text").textContent = message;
+  setPoemBusy(false);
+  refreshIcons();
+}
+
+function escapeHtml(value) {
+  const div = document.createElement("div");
+  div.textContent = value;
+  return div.innerHTML;
 }
 
 /* ---------------- Generate ---------------- */
@@ -1248,6 +1903,16 @@ async function loadSettings() {
       state.settingsBaseline[f.key] = f.secret ? "" : (f.value || "");
     });
 
+    if (groupName === "Instagram") {
+      const tester = document.createElement("div");
+      tester.className = "connection-test";
+      tester.innerHTML =
+        `<button class="btn-secondary" id="ig-test-btn">${icon("plug-zap", 14)} Test connection</button>` +
+        `<span class="connection-status" id="ig-test-status">Save your details first, then test.</span>`;
+      card.appendChild(tester);
+      tester.querySelector("#ig-test-btn").addEventListener("click", testInstagram);
+    }
+
     groupsEl.appendChild(card);
   });
 
@@ -1463,27 +2128,35 @@ function renderOutputs() {
   const grid = $("outputs-list");
 
   let items = state.outputs.filter((o) =>
-    !query ||
-    o.name.toLowerCase().includes(query) ||
-    (o.description || "").toLowerCase().includes(query)
+    (state.outputFilter === "all" || o.orientation === state.outputFilter) &&
+    (!query ||
+      o.name.toLowerCase().includes(query) ||
+      (o.description || "").toLowerCase().includes(query))
   );
 
   items = [...items].sort((a, b) => {
     if (sort === "name") return a.name.localeCompare(b.name);
     if (sort === "longest") return (b.duration_seconds || 0) - (a.duration_seconds || 0);
-    const at = new Date(a.created_at || 0).getTime() || a.modified_at || 0;
-    const bt = new Date(b.created_at || 0).getTime() || b.modified_at || 0;
+    // created_at is ISO, modified_at is unix seconds; put both on the same scale.
+    const at = Date.parse(a.created_at) || (a.modified_at || 0) * 1000;
+    const bt = Date.parse(b.created_at) || (b.modified_at || 0) * 1000;
     return sort === "oldest" ? at - bt : bt - at;
   });
 
   grid.innerHTML = "";
 
   if (!items.length) {
+    const filterLabel = { portrait: "Reels & Shorts", landscape: "YouTube", square: "Square" }[state.outputFilter];
+    let reason = "Nothing here matches your search yet.";
+    if (query && filterLabel) reason = `No ${filterLabel} videos match "${escapeHtml(query)}".`;
+    else if (query) reason = `Nothing here matches "${escapeHtml(query)}". Try a different search term.`;
+    else if (filterLabel) reason = `No ${filterLabel} videos yet. Poetry reels are portrait, story videos are landscape.`;
+
     grid.innerHTML = state.outputs.length
       ? `<div class="empty-state">
           <span class="empty-icon">${icon("search-x", 24)}</span>
           <strong>No matches</strong>
-          <p>Nothing here matches "${query}". Try a different search term.</p>
+          <p>${reason}</p>
         </div>`
       : `<div class="empty-state">
           <span class="empty-icon">${icon("clapperboard", 24)}</span>
@@ -1505,7 +2178,8 @@ function renderOutputs() {
       ? `<video controls preload="metadata" src="${o.video_url}"></video>`
       : `<div class="output-thumb-empty">${icon("video-off", 22)}<span>No final video</span></div>`;
 
-    const badges = [o.category, o.language, o.voice].filter(Boolean)
+    const shapeLabel = { portrait: "reel", landscape: "youtube", square: "square" }[o.orientation] || "";
+    const badges = [shapeLabel, o.kind === "poem" ? "poem" : o.category, o.language, o.voice].filter(Boolean)
       .map((v) => `<span class="badge outline">${v}</span>`).join("");
 
     const gallery = (o.images || []).length
@@ -1523,7 +2197,9 @@ function renderOutputs() {
         ${gallery}
         <div class="output-meta-row">
           <span>${icon("clock", 13)} ${formatDuration(o.duration_seconds)}</span>
-          <span>${icon("film", 13)} ${o.scene_count ?? "—"} scenes</span>
+          <span>${o.kind === "poem"
+            ? `${icon("feather", 13)} ${o.images.length ? "poem card" : "poem"}`
+            : `${icon("film", 13)} ${o.scene_count ?? "—"} scenes`}</span>
           <span>${icon("calendar", 13)} ${formatDate(o.created_at || o.modified_at)}</span>
         </div>
       </div>
@@ -1543,12 +2219,15 @@ function renderOutputs() {
       actions.appendChild(dl);
     }
 
-    const remix = document.createElement("button");
-    remix.className = "btn-secondary";
-    remix.innerHTML = `${icon("music", 14)} Music`;
-    remix.title = "Change the background music";
-    remix.addEventListener("click", () => openRemixModal(o));
-    actions.appendChild(remix);
+    // Remix rebuilds from a scene plan, which poem reels do not have.
+    if (o.kind !== "poem") {
+      const remix = document.createElement("button");
+      remix.className = "btn-secondary";
+      remix.innerHTML = `${icon("music", 14)} Music`;
+      remix.title = "Change the background music";
+      remix.addEventListener("click", () => openRemixModal(o));
+      actions.appendChild(remix);
+    }
     const del = document.createElement("button");
     del.className = "btn-danger";
     del.innerHTML = `${icon("trash-2", 14)} Delete`;
@@ -1757,9 +2436,46 @@ async function startRemix() {
   };
 }
 
+async function testInstagram() {
+  const btn = $("ig-test-btn");
+  const status = $("ig-test-status");
+  btn.disabled = true;
+  btn.innerHTML = `${icon("loader-circle", 14)} Checking…`;
+  status.className = "connection-status";
+  status.textContent = "Asking Instagram…";
+  refreshIcons();
+
+  try {
+    const res = await fetch("/api/instagram/test", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Could not verify those credentials.");
+
+    const quota = data.quota_total ? ` · ${data.quota_used ?? 0}/${data.quota_total} posts used today` : "";
+    status.className = data.can_publish ? "connection-status ok" : "connection-status warn";
+    status.textContent = data.can_publish
+      ? `Connected as @${data.username} (${data.account_type || "professional"})${quota}`
+      : `@${data.username} is a ${data.account_type} account, which cannot publish through the API. Switch it to Business or Creator.`;
+  } catch (err) {
+    status.className = "connection-status error";
+    status.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `${icon("plug-zap", 14)} Test connection`;
+    refreshIcons();
+  }
+}
+
 function setupOutputsToolbar() {
   $("outputs-search").addEventListener("input", renderOutputs);
   $("outputs-sort").addEventListener("change", renderOutputs);
+  document.querySelectorAll("#outputs-filter .chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      document.querySelectorAll("#outputs-filter .chip").forEach((c) => c.classList.remove("active"));
+      chip.classList.add("active");
+      state.outputFilter = chip.dataset.filter;
+      renderOutputs();
+    });
+  });
   $("outputs-refresh-btn").addEventListener("click", async () => {
     await loadOutputs();
     toast("Outputs refreshed");
@@ -1785,6 +2501,7 @@ async function init() {
   setupLightbox();
   setupRemix();
   setupConfirm();
+  setupPoetry();
 
   await loadStoriesList();
   await loadCategoriesIntoSelect($("opt-category"));
@@ -1832,6 +2549,8 @@ function setupGlobalKeys() {
     }
     if (e.key !== "Escape") return;
     if (confirmResolver) return closeConfirm(false);
+    if (!$("poem-crop-modal").classList.contains("hidden")) return closeCropModal();
+    if (!$("poem-review-modal").classList.contains("hidden")) return closePoemReview();
     if (!$("remix-modal").classList.contains("hidden")) {
       stopMusicPreview();
       $("remix-overlay").classList.add("hidden");

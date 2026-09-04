@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import re
 import shutil
+from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
@@ -11,7 +13,18 @@ from fastapi.staticfiles import StaticFiles
 
 from .. import config
 from ..assemble import get_audio_duration
+from .. import instagram
 from ..pipeline import PipelineOptions
+from ..poetry import (
+    MAX_POEM_CHARS,
+    MAX_POEM_LINES,
+    MIN_BACKGROUND_EDGE,
+    PoemError,
+    PoemOptions,
+    clean_poem,
+    load_photo,
+    undrawable_characters,
+)
 from ..story_reader import read_story
 from ..tts import generate_voice_over
 from ..tts_indicf5 import generate_voice_over_indicf5
@@ -20,6 +33,7 @@ from . import config_store, jobs, prompt_store
 from .schemas import (
     ConfigUpdateRequest,
     GenerateRequest,
+    PoemRequest,
     PromptSaveRequest,
     RemixRequest,
     StorySaveRequest,
@@ -44,6 +58,14 @@ def resolve_output_dir(name: str) -> Path:
     if candidate.parent != root or not candidate.is_dir():
         raise HTTPException(status_code=404, detail="Output not found")
     return candidate
+
+
+def poem_folder_name(first_line: str) -> str:
+    """Slug the opening line, falling back to a timestamp for scripts with no Latin letters."""
+    slug = re.sub(r"[^a-zA-Z0-9_-]+", "_", first_line[:40]).strip("_").lower()
+    if len(slug) >= 3:
+        return f"poem_{slug}"
+    return f"poem_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
 
 @app.get("/api/config")
@@ -112,6 +134,15 @@ def save_story(payload: StorySaveRequest) -> dict:
     return {"ok": True, "name": safe_name}
 
 
+def video_file(story_dir: Path) -> Optional[Path]:
+    """Story runs produce final_video.mp4, poem runs produce reel.mp4."""
+    for candidate in ("final_video.mp4", "reel.mp4"):
+        path = story_dir / candidate
+        if path.exists():
+            return path
+    return None
+
+
 @app.get("/api/outputs")
 def list_outputs() -> dict:
     output_dir = config.OUTPUT_DIR
@@ -121,8 +152,8 @@ def list_outputs() -> dict:
     for story_dir in sorted(output_dir.iterdir()):
         if not story_dir.is_dir() or story_dir.name.startswith("_"):
             continue
-        final_video = story_dir / "final_video.mp4"
-        has_video = final_video.exists()
+        final_video = video_file(story_dir)
+        has_video = final_video is not None
         meta = {}
         meta_path = story_dir / "meta.json"
         if meta_path.exists():
@@ -131,34 +162,59 @@ def list_outputs() -> dict:
             except (json.JSONDecodeError, OSError):
                 meta = {}
         duration = meta.get("duration_seconds")
-        if duration is None and has_video:
+        if duration is None and final_video:
             try:
                 duration = round(get_audio_duration(final_video), 1)
             except Exception:  # noqa: BLE001
                 duration = None
 
+        kind = meta.get("kind", "story")
         images_dir = story_dir / "images"
-        images = (
-            [f"/output/{story_dir.name}/images/{p.name}" for p in sorted(images_dir.glob("*.png"))]
-            if images_dir.is_dir()
-            else []
-        )
+        if kind == "poem":
+            images = [
+                f"/output/{story_dir.name}/{p.name}"
+                for p in (story_dir / "card.png", story_dir / "background.png")
+                if p.exists()
+            ]
+        elif images_dir.is_dir():
+            images = [f"/output/{story_dir.name}/images/{p.name}" for p in sorted(images_dir.glob("*.png"))]
+        else:
+            images = []
+
+        caption_path = story_dir / "caption.txt"
+        caption = caption_path.read_text(encoding="utf-8") if caption_path.exists() else ""
+
+        size = meta.get("size") or ("1080x1920" if kind == "poem" else "1920x1080")
+        try:
+            frame_w, frame_h = (int(p) for p in str(size).split("x"))
+        except ValueError:
+            frame_w, frame_h = 1920, 1080
+        if frame_h > frame_w:
+            orientation = "portrait"
+        elif frame_w > frame_h:
+            orientation = "landscape"
+        else:
+            orientation = "square"
 
         results.append(
             {
                 "name": story_dir.name,
+                "kind": kind,
+                "size": size,
+                "orientation": orientation,
                 "has_video": has_video,
-                "video_url": f"/output/{story_dir.name}/final_video.mp4" if has_video else None,
+                "video_url": f"/output/{story_dir.name}/{final_video.name}" if final_video else None,
                 "images": images,
-                "description": meta.get("description", ""),
+                "caption": caption,
+                "description": meta.get("description") or meta.get("mood", ""),
                 "language": meta.get("language", ""),
                 "category": meta.get("category", ""),
                 "style": meta.get("style", ""),
                 "voice": meta.get("voice", ""),
-                "scene_count": meta.get("scene_count") or len(images) or None,
+                "scene_count": meta.get("scene_count") or (len(images) if kind != "poem" else None),
                 "duration_seconds": duration,
                 "created_at": meta.get("created_at"),
-                "modified_at": final_video.stat().st_mtime if has_video else story_dir.stat().st_mtime,
+                "modified_at": final_video.stat().st_mtime if final_video else story_dir.stat().st_mtime,
             }
         )
     results.sort(key=lambda r: r["modified_at"], reverse=True)
@@ -260,11 +316,145 @@ def remix_output(name: str, payload: RemixRequest) -> dict:
     return {"job_id": job.id, "story_name": safe_name}
 
 
+@app.post("/api/poem")
+def start_poem(payload: PoemRequest) -> dict:
+    try:
+        lines = clean_poem(payload.poem_text)
+    except PoemError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    base = safe_slug(payload.name) if payload.name.strip() else poem_folder_name(lines[0])
+    name = base
+    counter = 2
+    while (config.OUTPUT_DIR / name).exists() and not payload.force_image:
+        name = f"{base}_{counter}"
+        counter += 1
+
+    options = PoemOptions(
+        style=payload.style,
+        language=payload.language,
+        size=payload.size,
+        seconds_per_line=payload.seconds_per_line,
+        music_file=Path(payload.music_file) if payload.music_file else None,
+        music_volume=payload.music_volume,
+        handle=payload.handle.strip(),
+        seed=payload.seed,
+        force_image=payload.force_image,
+        background_file=resolve_upload(payload.background_file) if payload.background_file else None,
+        focus_x=payload.focus_x,
+        focus_y=payload.focus_y,
+        zoom=payload.zoom,
+    )
+    job = jobs.create_poem_job(name, "\n".join(lines), options)
+    return {"job_id": job.id, "name": name, "lines": lines}
+
+
+@app.post("/api/instagram/test")
+def instagram_test() -> dict:
+    env = config_store.get_raw_env()
+    try:
+        return {"ok": True, **instagram.test_connection(env.get("IG_USER_ID", ""), env.get("IG_ACCESS_TOKEN", ""))}
+    except instagram.InstagramError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/poem/limits")
+def poem_limits() -> dict:
+    return {"max_chars": MAX_POEM_CHARS, "max_lines": MAX_POEM_LINES}
+
+
+@app.post("/api/poem/check")
+def poem_check(payload: PoemRequest) -> dict:
+    """Validate the poem the same way generation will, before spending minutes on an image."""
+    try:
+        lines = clean_poem(payload.poem_text)
+    except PoemError as exc:
+        return {"ok": False, "error": str(exc), "lines": [], "undrawable": []}
+
+    text = " ".join(lines) + payload.handle
+    return {
+        "ok": True,
+        "error": "",
+        "lines": lines,
+        "undrawable": undrawable_characters(text),
+    }
+
+
+UPLOAD_DIR = Path("output/_uploads")
+IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".tif", ".tiff", ".bmp", ".avif"}
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+KEEP_UPLOADS = 20
+
+
+def resolve_upload(name: str) -> Path:
+    root = UPLOAD_DIR.resolve()
+    candidate = (root / Path(name).name).resolve()
+    if candidate.parent != root or not candidate.is_file():
+        raise HTTPException(status_code=404, detail="That uploaded image is no longer available.")
+    return candidate
+
+
+def prune_uploads() -> None:
+    files = sorted(UPLOAD_DIR.glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for stale in files[KEEP_UPLOADS:]:
+        stale.unlink(missing_ok=True)
+
+
+@app.post("/api/poem/background")
+async def upload_background(file: UploadFile) -> dict:
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in IMAGE_SUFFIXES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{suffix or 'That file'} is not an image. Use JPG, PNG, WEBP or HEIC.",
+        )
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="That file is empty.")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"That image is {len(data) / 1024 / 1024:.0f} MB. Keep it under 25 MB.",
+        )
+
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    stem = safe_slug(Path(file.filename or "image").stem)[:40] or "image"
+    dest = UPLOAD_DIR / f"{stem}_{datetime.now():%H%M%S%f}{suffix}"
+    dest.write_bytes(data)
+
+    try:
+        photo = load_photo(dest)
+        width, height = photo.size
+    except PoemError as exc:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if min(width, height) < MIN_BACKGROUND_EDGE:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=400,
+            detail=f"That image is only {width}x{height}. Use one at least {MIN_BACKGROUND_EDGE}px on each side.",
+        )
+
+    # HEIC and friends cannot be shown by the browser, so serve a JPEG for the crop preview.
+    preview = dest.with_suffix(".preview.jpg")
+    photo.copy().save(preview, "JPEG", quality=88)
+    prune_uploads()
+
+    return {
+        "path": dest.name,
+        "url": f"/output/_uploads/{preview.name}",
+        "width": width,
+        "height": height,
+    }
+
+
 @app.get("/api/outputs/{name}/download")
 def download_output(name: str) -> FileResponse:
     story_dir = resolve_output_dir(name)
-    video = story_dir / "final_video.mp4"
-    if not video.is_file():
+    video = video_file(story_dir)
+    if video is None:
         raise HTTPException(status_code=404, detail="This output has no final video yet.")
     return FileResponse(video, media_type="video/mp4", filename=f"{story_dir.name}.mp4")
 

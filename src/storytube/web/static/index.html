@@ -25,6 +25,10 @@
           <span class="nav-icon"><i data-lucide="clapperboard"></i></span>
           <span class="nav-label">Create Video</span>
         </button>
+        <button class="nav-item" data-tab="poetry">
+          <span class="nav-icon"><i data-lucide="feather"></i></span>
+          <span class="nav-label">Poetry Reel</span>
+        </button>
         <button class="nav-item" data-tab="outputs">
           <span class="nav-icon"><i data-lucide="library"></i></span>
           <span class="nav-label">Outputs</span>
@@ -318,6 +322,138 @@
         </div>
       </section>
 
+      <!-- ================= POETRY ================= -->
+      <section class="tab hidden" id="tab-poetry">
+        <header class="page-header">
+          <div class="page-title-wrap">
+            <span class="page-icon"><i data-lucide="feather"></i></span>
+            <div>
+              <h1>Poetry reel</h1>
+              <p class="page-subtitle">Paste a few lines. Get a vertical video with the words on the image, ready for Instagram.</p>
+            </div>
+          </div>
+          <div class="page-actions">
+            <button class="btn-secondary" id="poem-advanced-toggle"><i data-lucide="sliders-horizontal"></i> Advanced</button>
+            <button class="btn-primary" id="poem-generate-btn"><i data-lucide="wand-sparkles"></i> Make reel</button>
+          </div>
+        </header>
+
+        <div class="create-layout">
+          <div class="create-main">
+            <div class="card">
+              <div class="card-head">
+                <span class="card-icon"><i data-lucide="pen-line"></i></span>
+                <div><h2>The poem</h2><p class="card-sub">Keep your own line breaks. Each line is drawn as its own line.</p></div>
+              </div>
+              <div class="field-row">
+                <div class="label-row">
+                  <label for="poem-text">Poem</label>
+                  <span class="counter" id="poem-counter">0 lines · 0 characters</span>
+                </div>
+                <textarea id="poem-text" rows="5" placeholder="दिल की बात कहूँ तो कैसे कहूँ&#10;ये लफ़्ज़ भी अब साथ नहीं देते"></textarea>
+              </div>
+              <div class="field-row">
+                <label for="poem-language">Language</label>
+                <select id="poem-language">
+                  <option value="Hindi">Hindi</option>
+                  <option value="Urdu">Urdu</option>
+                  <option value="English">English</option>
+                  <option value="Hinglish">Hinglish</option>
+                  <option value="Punjabi">Punjabi</option>
+                  <option value="Bengali">Bengali</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <span class="card-icon"><i data-lucide="image"></i></span>
+                <div><h2>Background</h2><p class="card-sub">Your own photo is instant. Generating one takes a few minutes.</p></div>
+              </div>
+
+              <div class="segmented" id="poem-bg-segmented">
+                <button class="segment active" data-value="upload"><i data-lucide="upload"></i> My own photo<span class="segment-note">seconds</span></button>
+                <button class="segment" data-value="generate"><i data-lucide="sparkles"></i> Generate<span class="segment-note">a few minutes</span></button>
+              </div>
+
+              <div id="poem-bg-upload" hidden>
+                <div class="upload-drop" id="poem-drop">
+                  <i data-lucide="image-plus"></i>
+                  <strong>Drop a photo here, or click to choose</strong>
+                  <span>JPG, PNG, WEBP or HEIC · at least 400px on each side</span>
+                </div>
+                <input type="file" id="poem-bg-input" accept="image/*" hidden />
+                <div class="chosen-photo" id="poem-bg-preview" hidden>
+                  <img id="poem-bg-chip" alt="Chosen background" />
+                  <div class="chosen-photo-meta">
+                    <strong id="poem-bg-name">—</strong>
+                    <span id="poem-bg-dims"></span>
+                  </div>
+                  <div class="chosen-photo-actions">
+                    <button class="btn-secondary" id="poem-crop-open"><i data-lucide="crop"></i> Adjust crop</button>
+                    <button class="btn-ghost" id="poem-bg-clear"><i data-lucide="x"></i> Remove</button>
+                  </div>
+                </div>
+              </div>
+
+              <div id="poem-bg-generate" hidden>
+                <div class="chip-row" id="poem-style-presets"></div>
+                <div class="help-text">Fine-tune the wording and seed under Advanced.</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <span class="card-icon"><i data-lucide="audio-lines"></i></span>
+                <div><h2>Music</h2><p class="card-sub">Reels are watched with sound on far more than feed posts.</p></div>
+              </div>
+              <div class="music-browser" id="poem-music-browser"></div>
+              <button class="btn-ghost upload-btn" id="poem-music-upload-btn"><i data-lucide="upload"></i> Upload your own track</button>
+              <input type="file" id="poem-music-upload-input" accept="audio/*" hidden />
+            </div>
+
+            <div class="card" id="poem-progress-card" hidden>
+              <div class="card-head">
+                <span class="card-icon spinning"><i data-lucide="loader-circle"></i></span>
+                <div><h2>Building your reel</h2><p class="card-sub" id="poem-progress-label">Starting…</p></div>
+              </div>
+              <div class="progress-bar-track"><div class="progress-bar-fill" id="poem-progress-fill" style="width:0%"></div></div>
+              <div class="notice danger" id="poem-error" hidden><i data-lucide="triangle-alert"></i><span id="poem-error-text"></span></div>
+            </div>
+
+            <div class="card" id="poem-result-card" hidden>
+              <div class="card-head">
+                <span class="card-icon"><i data-lucide="circle-check"></i></span>
+                <div><h2>Ready to post</h2><p class="card-sub" id="poem-result-mood">—</p></div>
+              </div>
+              <div class="poem-result">
+                <video id="poem-result-video" controls playsinline></video>
+                <div class="poem-caption-block">
+                  <div class="label-row"><label>Caption</label><button class="btn-ghost" id="poem-copy-caption"><i data-lucide="copy"></i> Copy</button></div>
+                  <textarea id="poem-caption" rows="10"></textarea>
+                  <div class="help-text">Paste this straight into Instagram. Edit it first if you like.</div>
+                </div>
+              </div>
+              <div class="page-actions">
+                <a class="btn-secondary" id="poem-download" download><i data-lucide="download"></i> Download reel</a>
+                <button class="btn-secondary" id="poem-redraw"><i data-lucide="refresh-cw"></i> Try another image</button>
+              </div>
+            </div>
+          </div>
+
+          <aside class="create-side">
+            <div class="card summary-card">
+              <div class="card-head">
+                <span class="card-icon"><i data-lucide="eye"></i></span>
+                <div><h2>Preview</h2><p class="card-sub">How the words will sit.</p></div>
+              </div>
+              <div class="poem-preview" id="poem-preview"><span class="poem-preview-empty">Your poem appears here</span></div>
+              <dl class="summary-list" id="poem-summary"></dl>
+            </div>
+          </aside>
+        </div>
+      </section>
+
       <!-- ================= OUTPUTS ================= -->
       <section class="tab hidden" id="tab-outputs">
         <header class="page-header">
@@ -340,6 +476,12 @@
             <div class="search-box">
               <i data-lucide="search"></i>
               <input type="text" id="outputs-search" placeholder="Search by name or description..." />
+            </div>
+            <div class="chip-row filter-row" id="outputs-filter">
+              <button class="chip active" data-filter="all">All</button>
+              <button class="chip" data-filter="portrait"><i data-lucide="smartphone"></i> Reels &amp; Shorts</button>
+              <button class="chip" data-filter="landscape"><i data-lucide="monitor-play"></i> YouTube</button>
+              <button class="chip" data-filter="square"><i data-lucide="square"></i> Square</button>
             </div>
             <select id="outputs-sort">
               <option value="recent">Newest first</option>
@@ -657,6 +799,113 @@
     <div class="modal-footer">
       <button class="btn-ghost" id="remix-cancel">Cancel</button>
       <button class="btn-primary" id="remix-start"><i data-lucide="refresh-cw"></i> Re-render with this music</button>
+    </div>
+  </div>
+
+  <div class="drawer-overlay hidden" id="poem-advanced-overlay"></div>
+  <aside class="drawer hidden" id="poem-advanced-drawer" aria-label="Advanced reel settings">
+    <div class="drawer-head">
+      <div class="page-title-wrap">
+        <span class="page-icon small"><i data-lucide="sliders-horizontal"></i></span>
+        <div><h2>Advanced</h2><p class="page-subtitle">Remembered between reels.</p></div>
+      </div>
+      <button class="icon-btn" id="poem-advanced-close" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="drawer-body">
+      <div class="field-row">
+        <label for="poem-handle">Your handle <span class="optional">optional</span></label>
+        <input type="text" id="poem-handle" placeholder="@your.poetry" />
+        <div class="help-text">Printed small under the poem.</div>
+      </div>
+      <div class="field-row">
+        <label for="poem-size">Shape</label>
+        <select id="poem-size">
+          <option value="1080x1920">Reel / Story — 9:16</option>
+          <option value="1080x1350">Feed portrait — 4:5</option>
+          <option value="1080x1080">Feed square — 1:1</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <div class="label-row"><label>Music volume</label><span class="counter" id="poem-music-out">35%</span></div>
+        <input type="range" id="poem-music-volume" min="0" max="1" step="0.05" value="0.35" />
+      </div>
+      <div class="field-row">
+        <div class="label-row"><label>Seconds per line</label><span class="counter" id="poem-pace-out">2.6s</span></div>
+        <input type="range" id="poem-pace" min="1.5" max="6" step="0.1" value="2.6" />
+        <div class="help-text" id="poem-duration-hint">Reel will be about 5 seconds.</div>
+      </div>
+      <div class="field-row">
+        <label for="poem-style">Style prompt <span class="optional">when generating</span></label>
+        <input type="text" id="poem-style" value="cinematic atmospheric photography, painterly, muted tones" />
+      </div>
+      <div class="field-row">
+        <div class="label-row"><label for="poem-seed">Image seed</label><span class="counter" id="poem-seed-out">7</span></div>
+        <input type="range" id="poem-seed" min="0" max="99" step="1" value="7" />
+        <div class="help-text">Same poem, different seed, different picture.</div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="modal-overlay hidden" id="poem-crop-overlay"></div>
+  <div class="modal hidden" id="poem-crop-modal" role="dialog" aria-modal="true" aria-labelledby="poem-crop-title">
+    <div class="modal-header">
+      <div class="page-title-wrap">
+        <span class="page-icon small"><i data-lucide="crop"></i></span>
+        <div>
+          <h2 id="poem-crop-title">Frame your photo</h2>
+          <p class="page-subtitle">Drag the picture. The shaded band is where your poem sits.</p>
+        </div>
+      </div>
+      <button class="icon-btn" id="poem-crop-close" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="crop-area">
+        <div class="crop-frame" id="poem-crop-frame" title="Drag to reposition">
+          <img id="poem-bg-thumb" alt="Chosen background" draggable="false" />
+          <div class="crop-textband"><span>your poem sits here</span></div>
+        </div>
+        <div class="crop-controls">
+          <div class="field-row">
+            <div class="label-row"><label for="poem-zoom">Zoom</label><span class="counter" id="poem-zoom-out">1.00×</span></div>
+            <input type="range" id="poem-zoom" min="1" max="3" step="0.05" value="1" />
+          </div>
+          <div class="help-text" id="poem-crop-hint">Drag the picture to choose what stays in frame.</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" id="poem-crop-reset"><i data-lucide="rotate-ccw"></i> Reset</button>
+      <button class="btn-primary" id="poem-crop-done"><i data-lucide="check"></i> Use this crop</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="poem-review-overlay"></div>
+  <div class="modal hidden" id="poem-review-modal" role="dialog" aria-modal="true" aria-labelledby="poem-review-title">
+    <div class="modal-header">
+      <div class="page-title-wrap">
+        <span class="page-icon small"><i data-lucide="feather"></i></span>
+        <div>
+          <h2 id="poem-review-title">Check before building</h2>
+          <p class="page-subtitle">The image takes a few minutes, so it is worth a look first.</p>
+        </div>
+      </div>
+      <button class="icon-btn" id="poem-review-close" title="Close" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div id="poem-review-warnings"></div>
+      <div class="review-group">
+        <h3>Lines as they will be drawn</h3>
+        <div class="poem-preview" id="poem-review-lines"></div>
+      </div>
+      <div class="review-group">
+        <h3>Settings</h3>
+        <div class="review-rows" id="poem-review-rows"></div>
+      </div>
+      <div class="review-estimate" id="poem-review-estimate"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" id="poem-review-back"><i data-lucide="pencil"></i> Back to edit</button>
+      <button class="btn-primary" id="poem-review-start"><i data-lucide="wand-sparkles"></i> Build the reel</button>
     </div>
   </div>
 

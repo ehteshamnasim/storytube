@@ -322,6 +322,7 @@ def run_pipeline(
             "indicf5": options.indicf5_voice,
         }.get(options.tts_provider, options.voice),
         "scene_count": total,
+        "size": options.size,
         "duration_seconds": round(total_duration, 1),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }

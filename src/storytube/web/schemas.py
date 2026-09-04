@@ -30,6 +30,24 @@ class RemixRequest(BaseModel):
     ambience_volume: float = 0.05
 
 
+class PoemRequest(BaseModel):
+    name: str = ""
+    poem_text: str
+    language: str = "Hindi"
+    style: str = "cinematic atmospheric photography, painterly, muted tones"
+    size: str = "1080x1920"
+    seconds_per_line: float = 2.6
+    music_file: Optional[str] = None
+    music_volume: float = 0.35
+    handle: str = ""
+    seed: int = 0
+    force_image: bool = False
+    background_file: Optional[str] = None
+    focus_x: float = 0.5
+    focus_y: float = 0.5
+    zoom: float = 1.0
+
+
 class GenerateRequest(BaseModel):
     story_name: str
     story_text: str
