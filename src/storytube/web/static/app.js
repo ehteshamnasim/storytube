@@ -15,6 +15,7 @@ const state = {
   insightsTarget: null,
   poemMode: "generate",
   poemNarrate: false,
+  poemDelivery: "recitation",
   poemVoiceTouched: false,
   poemBackground: null,
   poemUndrawable: [],
@@ -1127,6 +1128,7 @@ function gatherPoemOptions() {
     zoom: state.poemBackground?.zoom ?? 1,
     narrate: state.poemNarrate === true,
     voice: $("poem-voice").value,
+    delivery: state.poemDelivery || "recitation",
   };
 }
 
@@ -1140,6 +1142,7 @@ function savePoemPrefs() {
   prefs.music = $("poem-music-browser").dataset.selected || "";
   prefs.mode = state.poemMode || "generate";
   prefs.narrate = state.poemNarrate === true;
+  prefs.delivery = state.poemDelivery || "recitation";
   try {
     localStorage.setItem(POEM_PREFS_KEY, JSON.stringify(prefs));
   } catch {
@@ -1334,6 +1337,18 @@ function setPoemNarrate(on) {
     s.classList.toggle("active", (s.dataset.value === "on") === on)
   );
   $("poem-voice-row").hidden = !on;
+  $("poem-delivery-row").hidden = !on;
+  if (!on) stopVoicePreview();
+  savePoemPrefs();
+  renderPoemPreview();
+}
+
+function setPoemDelivery(mode) {
+  state.poemDelivery = mode;
+  document.querySelectorAll("#poem-delivery-segmented .segment").forEach((s) =>
+    s.classList.toggle("active", s.dataset.value === mode)
+  );
+  stopVoicePreview();
   savePoemPrefs();
   renderPoemPreview();
 }
@@ -1397,7 +1412,7 @@ async function previewPoemVoice() {
     const res = await fetch("/api/voice-preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider: "edge", voice, language }),
+      body: JSON.stringify({ provider: "edge", voice, language, delivery: state.poemDelivery }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || "That voice could not produce a sample.");
@@ -1452,6 +1467,9 @@ function setupPoetry() {
   );
   $("poem-voice-listen").addEventListener("click", previewPoemVoice);
   $("poem-voice-audio").addEventListener("ended", stopVoicePreview);
+  document.querySelectorAll("#poem-delivery-segmented .segment").forEach((seg) =>
+    seg.addEventListener("click", () => setPoemDelivery(seg.dataset.value))
+  );
   $("poem-language").addEventListener("change", () => {
     // Follow the language unless the reader was deliberately chosen.
     if (!state.poemVoiceTouched) {
@@ -1560,6 +1578,7 @@ function setupPoetry() {
   const prefs = loadPoemPrefs();
   // Your own photo is both the fast path and the usual case, so it leads.
   setPoemMode(prefs.mode || "upload");
+  setPoemDelivery(prefs.delivery || "recitation");
   setPoemNarrate(prefs.narrate === true);
   renderPoemPreview();
 }

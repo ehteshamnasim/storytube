@@ -38,6 +38,15 @@ MAX_ZOOM = 3.0
 VOICE_LEAD_IN = 0.9
 VOICE_LEAD_OUT = 1.6
 
+# A poem is carried by pace and silence, not by the voice alone. Reciting slows the
+# reader down, drops the pitch, and leaves a real gap where the line break is.
+DELIVERY = {
+    "natural": {"rate": "+0%", "pitch": "+0Hz", "pause": 0.0},
+    "recitation": {"rate": "-18%", "pitch": "-4Hz", "pause": 0.85},
+    "slow": {"rate": "-32%", "pitch": "-6Hz", "pause": 1.30},
+}
+DEFAULT_DELIVERY = "recitation"
+
 # edge-tts is free and has a real Urdu (Pakistan) voice, which the local models lack.
 POEM_VOICES = {
     "urdu": "ur-PK-AsadNeural",
@@ -107,6 +116,7 @@ class PoemOptions:
     zoom: float = 1.0
     narrate: bool = False
     voice: str = ""
+    delivery: str = DEFAULT_DELIVERY
 
 
 @dataclass
@@ -342,6 +352,42 @@ def _pad_voice(source: Path, out_path: Path, lead_in: float, total: float) -> Pa
     return out_path
 
 
+def _recite(lines: list[str], voice: str, out_dir: Path, out_path: Path, delivery: str) -> Path:
+    """Read the poem a line at a time so the line breaks are audible as silence."""
+    settings = DELIVERY.get(delivery, DELIVERY[DEFAULT_DELIVERY])
+    pause = settings["pause"]
+    spoken = [line for line in lines if line.strip()]
+
+    if not pause or len(spoken) < 2:
+        generate_voice_over("\n".join(spoken), voice, out_path, rate=settings["rate"], pitch=settings["pitch"])
+        return out_path
+
+    parts_dir = out_dir / "voice_lines"
+    parts_dir.mkdir(parents=True, exist_ok=True)
+    parts: list[Path] = []
+    for index, line in enumerate(spoken):
+        part = parts_dir / f"line_{index:02d}.mp3"
+        generate_voice_over(line, voice, part, rate=settings["rate"], pitch=settings["pitch"])
+        parts.append(part)
+
+    command = [config.FFMPEG_BIN, "-y", "-v", "error"]
+    for part in parts:
+        command += ["-i", str(part)]
+    # Pad every line but the last, so the reel does not end on a hanging silence.
+    pads = "".join(
+        f"[{i}:a]apad=pad_dur={pause:.2f}[p{i}];" if i < len(parts) - 1 else f"[{i}:a]anull[p{i}];"
+        for i in range(len(parts))
+    )
+    chain = "".join(f"[p{i}]" for i in range(len(parts)))
+    command += [
+        "-filter_complex", f"{pads}{chain}concat=n={len(parts)}:v=0:a=1[out]",
+        "-map", "[out]", "-c:a", "libmp3lame", "-q:a", "2",
+        str(out_path),
+    ]
+    subprocess.run(command, check=True, capture_output=True, stdin=subprocess.DEVNULL)
+    return out_path
+
+
 def _fallback_plan(lines: list[str]) -> dict:
     return {
         "mood": "",
@@ -551,7 +597,7 @@ def generate_poem_reel(
         voice = options.voice or default_poem_voice(options.language)
         report("voice", f"Reading the poem aloud ({voice})…")
         voice_path = out_dir / "voice.mp3"
-        generate_voice_over("\n".join(lines), voice, voice_path)
+        _recite(lines, voice, out_dir, voice_path, options.delivery)
         spoken = get_audio_duration(voice_path)
         duration = min(MAX_REEL_SECONDS, max(MIN_REEL_SECONDS, spoken + VOICE_LEAD_IN + VOICE_LEAD_OUT))
     else:

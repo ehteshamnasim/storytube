@@ -19,6 +19,7 @@ from ..poetry import (
     MAX_POEM_CHARS,
     MAX_POEM_LINES,
     MIN_BACKGROUND_EDGE,
+    DELIVERY,
     PoemError,
     PoemOptions,
     clean_poem,
@@ -254,7 +255,7 @@ SARVAM_LANGUAGE_CODES = {
 @app.post("/api/voice-preview")
 def voice_preview(payload: VoicePreviewRequest) -> dict:
     text = PREVIEW_TEXT.get(payload.language.lower(), DEFAULT_PREVIEW_TEXT)
-    key = safe_slug(f"{payload.provider}-{payload.voice}-{payload.language}")
+    key = safe_slug(f"{payload.provider}-{payload.voice}-{payload.language}-{payload.delivery}")
     out_path = PREVIEW_DIR / f"{key}.mp3"
 
     # A previous failure can leave a zero-byte file, which would replay as silence forever.
@@ -270,7 +271,8 @@ def voice_preview(payload: VoicePreviewRequest) -> dict:
             elif payload.provider == "sarvam":
                 generate_voice_over_sarvam(text, payload.voice, out_path, language_code=language_code)
             else:
-                generate_voice_over(text, payload.voice, out_path)
+                pace = DELIVERY.get(payload.delivery, DELIVERY["natural"])
+                generate_voice_over(text, payload.voice, out_path, rate=pace["rate"], pitch=pace["pitch"])
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -351,6 +353,7 @@ def start_poem(payload: PoemRequest) -> dict:
         zoom=payload.zoom,
         narrate=payload.narrate,
         voice=payload.voice,
+        delivery=payload.delivery,
     )
     job = jobs.create_poem_job(name, "\n".join(lines), options)
     return {"job_id": job.id, "name": name, "lines": lines}

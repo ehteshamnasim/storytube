@@ -22,6 +22,7 @@ class VoicePreviewRequest(BaseModel):
     provider: str = "edge"
     voice: str = "en-US-AriaNeural"
     language: str = "English"
+    delivery: str = "natural"
 
 
 class RemixRequest(BaseModel):
@@ -53,6 +54,7 @@ class PoemRequest(BaseModel):
     zoom: float = 1.0
     narrate: bool = False
     voice: str = ""
+    delivery: str = "recitation"
 
 
 class GenerateRequest(BaseModel):
