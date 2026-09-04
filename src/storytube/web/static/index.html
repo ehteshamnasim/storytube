@@ -432,20 +432,10 @@
               <div class="field-row" id="poem-voice-row" hidden>
                 <label for="poem-voice">Reader</label>
                 <div class="voice-row">
-                  <select id="poem-voice">
-                    <option value="ur-PK-AsadNeural">Urdu (Pakistan) — Asad, male</option>
-                    <option value="ur-PK-UzmaNeural">Urdu (Pakistan) — Uzma, female</option>
-                    <option value="ur-IN-SalmanNeural">Urdu (India) — Salman, male</option>
-                    <option value="ur-IN-GulNeural">Urdu (India) — Gul, female</option>
-                    <option value="hi-IN-MadhurNeural">Hindi — Madhur, male</option>
-                    <option value="hi-IN-SwaraNeural">Hindi — Swara, female</option>
-                    <option value="en-IN-PrabhatNeural">English (India) — Prabhat, male</option>
-                    <option value="en-IN-NeerjaNeural">English (India) — Neerja, female</option>
-                    <option value="bn-IN-BashkarNeural">Bengali — Bashkar, male</option>
-                    <option value="bn-IN-TanishaaNeural">Bengali — Tanishaa, female</option>
-                  </select>
+                  <select id="poem-voice"></select>
                   <button class="btn-secondary" id="poem-voice-listen"><i data-lucide="volume-2"></i> Listen</button>
                 </div>
+                <div class="help-text" id="poem-voice-note" hidden></div>
                 <div class="help-text">Free, via edge-tts. The reel length follows the reading, so pacing is ignored.</div>
                 <audio id="poem-voice-audio" hidden></audio>
               </div>
@@ -483,10 +473,13 @@
                 <div><h2>Ready to post</h2><p class="card-sub" id="poem-result-mood">—</p></div>
               </div>
               <div class="poem-result">
-                <video id="poem-result-video" controls playsinline></video>
+                <div class="poem-result-media">
+                  <div class="label-row"><label>Reel</label><span class="mini-note" id="poem-result-shape"></span></div>
+                  <video id="poem-result-video" controls playsinline></video>
+                </div>
                 <div class="poem-caption-block">
                   <div class="label-row"><label>Caption</label><button class="btn-ghost" id="poem-copy-caption"><i data-lucide="copy"></i> Copy</button></div>
-                  <textarea id="poem-caption" rows="10"></textarea>
+                  <textarea id="poem-caption"></textarea>
                   <div class="help-text">Paste this straight into Instagram. Edit it first if you like.</div>
                 </div>
               </div>

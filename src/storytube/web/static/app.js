@@ -635,6 +635,26 @@ const PROVIDER_LANGUAGES = {
   indicf5: ["Hindi", "Bengali", "Tamil", "Telugu"],
 };
 
+// A reader is only offered when it can actually read the script on screen.
+// Romanised text is read by all of them, so "latin" matches everything.
+const POEM_READERS = [
+  { value: "ur-PK-AsadNeural", label: "Urdu (Pakistan) \u2014 Asad, male", script: "arabic" },
+  { value: "ur-PK-UzmaNeural", label: "Urdu (Pakistan) \u2014 Uzma, female", script: "arabic" },
+  { value: "ur-IN-SalmanNeural", label: "Urdu (India) \u2014 Salman, male", script: "arabic" },
+  { value: "ur-IN-GulNeural", label: "Urdu (India) \u2014 Gul, female", script: "arabic" },
+  { value: "hi-IN-MadhurNeural", label: "Hindi \u2014 Madhur, male", script: "devanagari" },
+  { value: "hi-IN-SwaraNeural", label: "Hindi \u2014 Swara, female", script: "devanagari" },
+  { value: "bn-IN-BashkarNeural", label: "Bengali \u2014 Bashkar, male", script: "bengali" },
+  { value: "bn-IN-TanishaaNeural", label: "Bengali \u2014 Tanishaa, female", script: "bengali" },
+  { value: "en-IN-PrabhatNeural", label: "English (India) \u2014 Prabhat, male", script: "latin" },
+  { value: "en-IN-NeerjaNeural", label: "English (India) \u2014 Neerja, female", script: "latin" },
+];
+
+const LANGUAGE_DEFAULT_READER = {
+  Urdu: "ur-PK-AsadNeural", Hindi: "hi-IN-MadhurNeural", Hinglish: "hi-IN-MadhurNeural",
+  Punjabi: "hi-IN-MadhurNeural", Bengali: "bn-IN-BashkarNeural", English: "en-IN-PrabhatNeural",
+};
+
 function previewLanguagesFor(provider) {
   if (provider === "edge") {
     const spoken = EDGE_LOCALE_LANGUAGE[currentVoiceFor("edge").split("-")[0]];
@@ -994,6 +1014,7 @@ function renderPoemPreview() {
   const chars = $("poem-text").value.length;
   const handle = $("poem-handle").value.trim();
 
+  syncPoemReaders();
   $("poem-counter").textContent = `${lines.length} ${lines.length === 1 ? "line" : "lines"} · ${chars} characters`;
   $("poem-counter").classList.toggle("over", chars > POEM_LIMITS.max_chars || lines.length > POEM_LIMITS.max_lines);
   $("poem-duration-hint").textContent = lines.length
@@ -1076,15 +1097,8 @@ function poemWarnings(lines) {
     warnings.push(["info", "No Gemini key, so the caption will just be your poem plus general hashtags."]);
   }
 
-  if (state.poemNarrate && lines.length) {
-    const voice = $("poem-voice").value;
-    const expected = { ur: "arabic", ar: "arabic", hi: "devanagari", bn: "bengali", en: "latin" }[voice.split("-")[0]];
-    const poemScript = scriptOf(lines.join(" "));
-    // Latin text is read by every voice; a mismatched Indic/Arabic script returns no audio.
-    if (poemScript !== "latin" && expected && poemScript !== expected) {
-      const reader = $("poem-voice").selectedOptions[0]?.textContent || voice;
-      warnings.push(["danger", `Your poem is in ${titleCase(poemScript)} script but ${reader} cannot read it. Pick a matching reader, or turn the voice-over off.`]);
-    }
+  if (state.poemNarrate && lines.length && !readersFor(scriptOf(lines.join(" "))).length) {
+    warnings.push(["danger", "No free reader can read this script yet. Turn the voice-over off to carry on."]);
   }
   return warnings;
 }
@@ -1143,6 +1157,12 @@ function loadPoemPrefs() {
   POEM_PREF_FIELDS.forEach((id) => {
     if (prefs[id] !== undefined && $(id)) $(id).value = prefs[id];
   });
+  // The reader list is built from the poem's script, so it has no options to select yet.
+  syncPoemReaders();
+  const savedVoice = prefs["poem-voice"];
+  if (savedVoice && [...$("poem-voice").options].some((o) => o.value === savedVoice)) {
+    $("poem-voice").value = savedVoice;
+  }
   if (prefs.music) $("poem-music-browser").dataset.selected = prefs.music;
   $("poem-music-out").textContent = `${Math.round($("poem-music-volume").value * 100)}%`;
   $("poem-pace-out").textContent = `${Number($("poem-pace").value).toFixed(1)}s`;
@@ -1318,7 +1338,52 @@ function setPoemNarrate(on) {
   renderPoemPreview();
 }
 
+function readersFor(script) {
+  // Verified against edge-tts: a reader returns no audio at all for a script it does not know.
+  return script === "latin" ? POEM_READERS : POEM_READERS.filter((r) => r.script === script);
+}
+
+function syncPoemReaders() {
+  const select = $("poem-voice");
+  const script = scriptOf($("poem-text").value);
+  const allowed = readersFor(script);
+  const signature = allowed.map((r) => r.value).join(",");
+  if (select.dataset.signature === signature) return;
+  select.dataset.signature = signature;
+
+  const wanted = select.value;
+  select.innerHTML = "";
+  allowed.forEach((r) => select.add(new Option(r.label, r.value)));
+  if (allowed.some((r) => r.value === wanted)) {
+    select.value = wanted;
+  } else {
+    const fallback = LANGUAGE_DEFAULT_READER[$("poem-language").value];
+    select.value = allowed.some((r) => r.value === fallback) ? fallback : allowed[0]?.value || "";
+    state.poemVoiceTouched = false;
+  }
+  const note = $("poem-voice-note");
+  note.textContent = script === "latin" ? "" : `Only the readers that can read ${titleCase(script)} script are listed.`;
+  note.hidden = !note.textContent;
+  stopVoicePreview();
+  enhanceAllSelects($("poem-voice-row"));
+}
+
+function stopVoicePreview() {
+  const audio = $("poem-voice-audio");
+  audio.pause();
+  audio.currentTime = 0;
+  state.voicePreviewPlaying = false;
+  const btn = $("poem-voice-listen");
+  btn.disabled = false;
+  btn.innerHTML = `${icon("volume-2", 14)} Listen`;
+  refreshIcons();
+}
+
 async function previewPoemVoice() {
+  if (state.voicePreviewPlaying) {
+    stopVoicePreview();
+    return;
+  }
   const btn = $("poem-voice-listen");
   const audio = $("poem-voice-audio");
   const voice = $("poem-voice").value;
@@ -1338,12 +1403,13 @@ async function previewPoemVoice() {
     if (!res.ok) throw new Error(data.detail || "That voice could not produce a sample.");
     audio.src = data.url;
     await audio.play();
+    state.voicePreviewPlaying = true;
+    btn.disabled = false;
+    btn.innerHTML = `${icon("square", 14)} Stop`;
+    refreshIcons();
   } catch (err) {
     toast(err.message, "error");
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = `${icon("volume-2", 14)} Listen`;
-    refreshIcons();
+    stopVoicePreview();
   }
 }
 
@@ -1385,17 +1451,23 @@ function setupPoetry() {
     seg.addEventListener("click", () => setPoemNarrate(seg.dataset.value === "on"))
   );
   $("poem-voice-listen").addEventListener("click", previewPoemVoice);
+  $("poem-voice-audio").addEventListener("ended", stopVoicePreview);
   $("poem-language").addEventListener("change", () => {
     // Follow the language unless the reader was deliberately chosen.
     if (!state.poemVoiceTouched) {
-      const map = { Urdu: "ur-PK-AsadNeural", Hindi: "hi-IN-MadhurNeural", Hinglish: "hi-IN-MadhurNeural",
-                    English: "en-IN-PrabhatNeural", Bengali: "bn-IN-BashkarNeural", Punjabi: "hi-IN-MadhurNeural" };
-      const next = map[$("poem-language").value];
-      if (next) { $("poem-voice").value = next; enhanceAllSelects($("poem-voice-row")); }
+      const next = LANGUAGE_DEFAULT_READER[$("poem-language").value];
+      if (next && POEM_READERS.some((r) => r.value === next)) {
+        $("poem-voice").value = next;
+        enhanceAllSelects($("poem-voice-row"));
+      }
     }
     renderPoemPreview();
   });
-  $("poem-voice").addEventListener("change", () => { state.poemVoiceTouched = true; renderPoemPreview(); });
+  $("poem-voice").addEventListener("change", () => {
+    state.poemVoiceTouched = true;
+    stopVoicePreview();
+    renderPoemPreview();
+  });
 
   const drop = $("poem-drop");
   drop.addEventListener("click", () => $("poem-bg-input").click());
@@ -1678,6 +1750,7 @@ async function finishPoem(name) {
     made?.voice || null,
   ].filter(Boolean);
   $("poem-result-mood").textContent = facts.length ? facts.join(" \u00b7 ") : "Your reel is ready to post";
+  $("poem-result-shape").textContent = (made?.size || "1080x1920").replace("x", " \u00d7 ");
   $("poem-caption").value = made?.caption || "";
   $("poem-download").href = `/api/outputs/${encodeURIComponent(name)}/download`;
   $("poem-download").download = `${name}.mp4`;

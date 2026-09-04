@@ -357,6 +357,7 @@ h1 { font-family: var(--serif); font-size: 24px; margin: 0 0 2px; }
 label { font-size: 12.5px; font-weight: 600; color: var(--text); }
 
 .label-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.mini-note { font-size: 12px; color: var(--muted); }
 .counter { font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
 input[type="text"],
@@ -1465,7 +1466,7 @@ input.invalid, textarea.invalid {
   letter-spacing: 0.02em;
 }
 
-.poem-result { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr); gap: 18px; }
+.poem-result { display: grid; grid-template-columns: minmax(0, 250px) minmax(0, 1fr); gap: 20px; align-items: stretch; }
 
 .upload-drop {
   display: flex;
@@ -1671,6 +1672,9 @@ input.invalid, textarea.invalid {
 @media (max-width: 720px) {
   .crop-area { grid-template-columns: 1fr; }
 }
+.poem-result-media { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* Both headers share a height so the video and the caption box line up. */
+.poem-result .label-row { min-height: 36px; align-items: center; }
 .poem-result video {
   width: 100%;
   border-radius: var(--radius);
@@ -1678,10 +1682,12 @@ input.invalid, textarea.invalid {
   aspect-ratio: 9 / 16;
   object-fit: contain;
 }
-.poem-caption-block { display: flex; flex-direction: column; gap: 8px; }
-.poem-caption-block textarea { font-size: 13px; line-height: 1.6; resize: vertical; }
+.poem-caption-block { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.poem-caption-block textarea { flex: 1; min-height: 160px; font-size: 13px; line-height: 1.6; resize: none; }
+.poem-result + .page-actions { margin-top: 18px; }
 @media (max-width: 900px) {
   .poem-result { grid-template-columns: 1fr; }
+  .poem-caption-block textarea { min-height: 200px; }
 }
 
 .modal-header {
