@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 from urllib.parse import quote
 
@@ -37,6 +38,34 @@ def _generate_image_huggingface(
     image.save(out_path)
 
 
+POLLINATIONS_ATTEMPTS = 3
+POLLINATIONS_RETRY_CODES = {401, 408, 429, 500, 502, 503, 504}
+
+
+def _pollinations_message(response: requests.Response) -> str:
+    """Turn a Pollinations failure into something worth reading, not a 400-character URL."""
+    detail = ""
+    try:
+        detail = (response.json().get("error") or {}).get("message", "")
+    except ValueError:
+        detail = ""
+
+    if response.status_code == 401:
+        return (
+            "Pollinations rejected the API key. It usually means the key is wrong or the account "
+            "has run out of Pollen credits. Check enter.pollinations.ai/keys, or switch Image "
+            f"Provider to 'local' in Settings to generate on your own Mac instead. {detail}".strip()
+        )
+    if response.status_code in (402, 403):
+        return (
+            "Pollinations needs Pollen credits for this model. Top up at enter.pollinations.ai, "
+            f"or switch Image Provider to 'local' in Settings. {detail}".strip()
+        )
+    if response.status_code == 429:
+        return f"Pollinations is rate limiting this key. Wait a moment and try again. {detail}".strip()
+    return f"Pollinations returned HTTP {response.status_code}. {detail}".strip()
+
+
 def _generate_image_pollinations(
     prompt: str,
     out_path: Path,
@@ -54,9 +83,30 @@ def _generate_image_pollinations(
         headers = {}
     if seed is not None:
         params["seed"] = seed
-    response = requests.get(url, params=params, headers=headers, timeout=120)
-    response.raise_for_status()
-    out_path.write_bytes(response.content)
+
+    message = ""
+    for attempt in range(POLLINATIONS_ATTEMPTS):
+        try:
+            response = requests.get(url, params=params, headers=headers, timeout=120)
+        except requests.RequestException as exc:
+            message = f"Could not reach Pollinations: {exc}"
+            if attempt < POLLINATIONS_ATTEMPTS - 1:
+                time.sleep(3 * (attempt + 1))
+                continue
+            raise RuntimeError(message) from exc
+
+        if response.ok and response.headers.get("content-type", "").startswith("image/"):
+            out_path.write_bytes(response.content)
+            return
+
+        message = _pollinations_message(response)
+        # Their 401s are often transient rather than a genuinely bad key.
+        if response.status_code in POLLINATIONS_RETRY_CODES and attempt < POLLINATIONS_ATTEMPTS - 1:
+            time.sleep(3 * (attempt + 1))
+            continue
+        break
+
+    raise RuntimeError(message or "Pollinations did not return an image.")
 
 
 QUALITY_SUFFIX = (
