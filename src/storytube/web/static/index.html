@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Storytube Studio</title>
 <link rel="stylesheet" href="/style.css" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 </head>
 <body>
   <div class="boot" id="boot">
@@ -476,32 +477,34 @@
         <div class="page-body">
           <div class="stat-row" id="outputs-stats"></div>
 
-          <div class="toolbar">
-            <div class="search-box">
-              <i data-lucide="search"></i>
-              <input type="text" id="outputs-search" placeholder="Search by name or description..." />
+          <div class="card panel-card">
+            <div class="toolbar">
+              <div class="search-box">
+                <i data-lucide="search"></i>
+                <input type="text" id="outputs-search" placeholder="Search by name or description..." />
+              </div>
+              <div class="chip-row filter-row" id="outputs-filter">
+                <button class="chip active" data-filter="all">All</button>
+                <button class="chip" data-filter="portrait"><i data-lucide="smartphone"></i> Reels &amp; Shorts</button>
+                <button class="chip" data-filter="landscape"><i data-lucide="monitor-play"></i> YouTube</button>
+                <button class="chip" data-filter="square"><i data-lucide="square"></i> Square</button>
+              </div>
+              <select id="outputs-sort">
+                <option value="recent">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="name">Name A–Z</option>
+                <option value="longest">Longest first</option>
+              </select>
             </div>
-            <div class="chip-row filter-row" id="outputs-filter">
-              <button class="chip active" data-filter="all">All</button>
-              <button class="chip" data-filter="portrait"><i data-lucide="smartphone"></i> Reels &amp; Shorts</button>
-              <button class="chip" data-filter="landscape"><i data-lucide="monitor-play"></i> YouTube</button>
-              <button class="chip" data-filter="square"><i data-lucide="square"></i> Square</button>
+
+            <div class="skeleton-grid hidden" id="outputs-skeleton">
+              <div class="skeleton-card"></div>
+              <div class="skeleton-card"></div>
+              <div class="skeleton-card"></div>
             </div>
-            <select id="outputs-sort">
-              <option value="recent">Newest first</option>
-              <option value="oldest">Oldest first</option>
-              <option value="name">Name A–Z</option>
-              <option value="longest">Longest first</option>
-            </select>
-          </div>
 
-          <div class="skeleton-grid hidden" id="outputs-skeleton">
-            <div class="skeleton-card"></div>
-            <div class="skeleton-card"></div>
-            <div class="skeleton-card"></div>
+            <div id="outputs-list" class="outputs-grid"></div>
           </div>
-
-          <div id="outputs-list" class="outputs-grid"></div>
         </div>
       </section>
 

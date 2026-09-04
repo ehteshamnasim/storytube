@@ -2466,22 +2466,42 @@ function renderOutputs() {
     });
 
     const actions = card.querySelector(".output-actions");
-    if (o.video_url) {
-      const dl = document.createElement("a");
-      dl.className = "btn-secondary primary-action";
-      dl.href = `/api/outputs/${encodeURIComponent(o.name)}/download`;
-      dl.download = `${o.name}.mp4`;
-      dl.innerHTML = `${icon("download", 14)} Download`;
-      actions.appendChild(dl);
+    const menu = [];
+
+    // Posting is the point of a reel, so it leads. Landscape cannot be a reel.
+    const canPost = o.video_url && o.orientation !== "landscape";
+    if (canPost) {
+      const ig = document.createElement("button");
+      ig.className = "btn-primary primary-action";
+      if (posted) {
+        ig.innerHTML = `${icon("chart-no-axes-column", 14)} Insights`;
+        ig.addEventListener("click", () => openInsights(o.name));
+      } else {
+        ig.innerHTML = `${icon("camera", 14)} Post`;
+        ig.addEventListener("click", () => openPublishModal(o.name, o.caption));
+      }
+      actions.appendChild(ig);
     }
 
-    const menu = [];
-    // Reels are vertical, so a landscape video would be cropped to pieces.
-    if (o.video_url && o.orientation !== "landscape") {
-      menu.push(posted
-        ? { icon: "chart-no-axes-column", label: "Post insights", onClick: () => openInsights(o.name) }
-        : { icon: "camera", label: "Post to Instagram", onClick: () => openPublishModal(o.name, o.caption) });
+    if (o.video_url) {
+      const download = { icon: "download", label: "Download video", onClick: () => {
+        const a = document.createElement("a");
+        a.href = `/api/outputs/${encodeURIComponent(o.name)}/download`;
+        a.download = `${o.name}.mp4`;
+        a.click();
+      } };
+      if (canPost) {
+        menu.push(download);
+      } else {
+        const dl = document.createElement("a");
+        dl.className = "btn-secondary primary-action";
+        dl.href = `/api/outputs/${encodeURIComponent(o.name)}/download`;
+        dl.download = `${o.name}.mp4`;
+        dl.innerHTML = `${icon("download", 14)} Download`;
+        actions.appendChild(dl);
+      }
     }
+
     // Remix rebuilds from a scene plan, which poem reels do not have.
     if (o.kind !== "poem") {
       menu.push({ icon: "music", label: "Change music", onClick: () => openRemixModal(o) });
