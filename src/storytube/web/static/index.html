@@ -999,15 +999,36 @@
         <button class="btn-ghost" id="publish-open-settings" hidden><i data-lucide="settings"></i> Settings</button>
       </div>
 
-      <div class="field-row">
+      <div class="field-row" id="publish-caption-row">
         <div class="label-row"><label for="publish-caption">Caption</label><span class="counter" id="publish-caption-count">0 / 2200</span></div>
         <textarea id="publish-caption" rows="9"></textarea>
         <div class="help-text">Posted as a Reel. AI-generated content is disclosed to Meta automatically.</div>
       </div>
 
-      <div class="notice warn">
+      <div class="field-row" id="publish-title-row" hidden>
+        <label for="publish-yt-title">Title</label>
+        <input type="text" id="publish-yt-title" maxlength="100" />
+      </div>
+      <div class="field-row" id="publish-desc-row" hidden>
+        <div class="label-row"><label for="publish-yt-description">Description</label><span class="counter" id="publish-yt-description-count">0 / 5000</span></div>
+        <textarea id="publish-yt-description" rows="7"></textarea>
+      </div>
+      <div class="field-row" id="publish-privacy-row" hidden>
+        <label for="publish-yt-privacy">Privacy</label>
+        <select id="publish-yt-privacy">
+          <option value="public">Public</option>
+          <option value="unlisted">Unlisted</option>
+          <option value="private">Private</option>
+        </select>
+      </div>
+
+      <div class="notice warn" id="publish-warning-ig">
         <i data-lucide="triangle-alert"></i>
         <span>Instagram has no delete endpoint. Once posted, it can only be removed by hand in the app.</span>
+      </div>
+      <div class="notice warn" id="publish-warning-yt" hidden>
+        <i data-lucide="triangle-alert"></i>
+        <span>Posted as a YouTube Short. You can change privacy or delete it afterwards from YouTube Studio.</span>
       </div>
 
       <div class="progress-bar-track" id="publish-progress-track" hidden>
@@ -1039,7 +1060,7 @@
       <div class="help-text" id="insights-note"></div>
     </div>
     <div class="modal-footer">
-      <a class="btn-ghost" id="insights-permalink" target="_blank" rel="noopener"><i data-lucide="external-link"></i> Open on Instagram</a>
+      <a class="btn-ghost" id="insights-permalink" target="_blank" rel="noopener"><i data-lucide="external-link"></i> <span id="insights-permalink-label">Open on Instagram</span></a>
       <button class="btn-secondary" id="insights-refresh"><i data-lucide="refresh-cw"></i> Refresh</button>
     </div>
   </div>

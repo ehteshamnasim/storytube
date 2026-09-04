@@ -36,6 +36,18 @@ class PublishRequest(BaseModel):
     force: bool = False
 
 
+class YoutubeConnectRequest(BaseModel):
+    client_id: str = ""
+    client_secret: str = ""
+
+
+class YoutubePublishRequest(BaseModel):
+    title: str = ""
+    description: str = ""
+    privacy: str = "public"
+    force: bool = False
+
+
 class PoemRequest(BaseModel):
     name: str = ""
     poem_text: str

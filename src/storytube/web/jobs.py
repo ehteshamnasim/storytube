@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .. import instagram
+from .. import youtube
 from ..pipeline import PipelineOptions, run_pipeline
 from ..poetry import PoemOptions, generate_poem_reel
 
@@ -66,6 +67,20 @@ class Job:
 
         self._run(work)
 
+    def start_youtube(
+        self, video: Path, title: str, description: str, out_dir: Path, access_token: str, privacy: str
+    ) -> None:
+        def work() -> Path:
+            def on_progress(stage: str, message: str) -> None:
+                self.events.put({"type": "progress", "stage": stage, "message": message})
+
+            result = youtube.upload_short(video, title, description, access_token, privacy, on_progress=on_progress)
+            youtube.write_state(out_dir, result)
+            self.events.put({"type": "progress", "stage": "done", "message": "Posted", **result})
+            return video
+
+        self._run(work)
+
 
 _jobs: dict[str, Job] = {}
 
@@ -91,6 +106,16 @@ def create_instagram_job(name: str, video: Path, caption: str, out_dir: Path, us
     job = Job(job_id, name)
     _jobs[job_id] = job
     job.start_instagram(video, caption, out_dir, user_id, token)
+    return job
+
+
+def create_youtube_job(
+    name: str, video: Path, title: str, description: str, out_dir: Path, access_token: str, privacy: str
+) -> Job:
+    job_id = uuid.uuid4().hex[:12]
+    job = Job(job_id, name)
+    _jobs[job_id] = job
+    job.start_youtube(video, title, description, out_dir, access_token, privacy)
     return job
 
 

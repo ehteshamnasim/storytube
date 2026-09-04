@@ -46,6 +46,7 @@ const SETTINGS_GROUP_META = {
   "Images": { icon: "image", description: "Which service draws each scene, and which model it uses." },
   "Voice-over": { icon: "mic", description: "Text-to-speech engine used to narrate your story." },
   "Instagram": { icon: "camera", description: "Optional. Lets the app check your posting credentials. Needs a Business or Creator account." },
+  "YouTube": { icon: "monitor-play", description: "Optional. Connect once to post reels as Shorts and read back their view counts." },
   "Advanced": { icon: "sliders-horizontal", description: "Low-level paths. Most people never need to touch these." },
 };
 
@@ -827,6 +828,11 @@ function setupPublish() {
     $("publish-caption-count").textContent = `${n} / 2200`;
     $("publish-caption-count").classList.toggle("over", n > 2200);
   });
+  $("publish-yt-description").addEventListener("input", (e) => {
+    const n = e.target.value.length;
+    $("publish-yt-description-count").textContent = `${n} / 5000`;
+    $("publish-yt-description-count").classList.toggle("over", n > 5000);
+  });
 
   const closeInsights = () => {
     $("insights-overlay").classList.add("hidden");
@@ -849,11 +855,30 @@ function setPublishAccount(kind, title, detail) {
   refreshIcons();
 }
 
-async function openPublishModal(name, caption) {
+async function openPublishModal(name, caption, platform = "instagram") {
   state.publishTarget = name;
+  state.publishPlatform = platform;
+  const isYoutube = platform === "youtube";
+
+  $("publish-title").textContent = isYoutube ? "Post as YouTube Short" : "Post to Instagram";
   $("publish-target").textContent = titleCase(name);
-  $("publish-caption").value = caption || "";
-  $("publish-caption").dispatchEvent(new Event("input"));
+  $("publish-caption-row").hidden = isYoutube;
+  $("publish-title-row").hidden = !isYoutube;
+  $("publish-desc-row").hidden = !isYoutube;
+  $("publish-privacy-row").hidden = !isYoutube;
+  $("publish-warning-ig").hidden = isYoutube;
+  $("publish-warning-yt").hidden = !isYoutube;
+
+  if (isYoutube) {
+    $("publish-yt-title").value = titleCase(name);
+    $("publish-yt-description").value = caption || "";
+    $("publish-yt-description").dispatchEvent(new Event("input"));
+    $("publish-yt-privacy").value = "public";
+  } else {
+    $("publish-caption").value = caption || "";
+    $("publish-caption").dispatchEvent(new Event("input"));
+  }
+
   $("publish-progress-track").hidden = true;
   $("publish-status").hidden = true;
   $("publish-start").disabled = true;
@@ -863,25 +888,35 @@ async function openPublishModal(name, caption) {
   refreshIcons();
 
   try {
-    const res = await fetch("/api/instagram/test", { method: "POST" });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Could not verify your credentials.");
-    if (!data.can_publish) {
-      throw new Error(`@${data.username} is a ${data.account_type} account. Only Business or Creator accounts can publish.`);
+    if (isYoutube) {
+      const res = await fetch("/api/youtube/test");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Could not verify your connection.");
+      setPublishAccount("ok", `Posting to ${data.title}`, data.subscriber_count ? `${data.subscriber_count} subscribers` : "");
+    } else {
+      const res = await fetch("/api/instagram/test", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Could not verify your credentials.");
+      if (!data.can_publish) {
+        throw new Error(`@${data.username} is a ${data.account_type} account. Only Business or Creator accounts can publish.`);
+      }
+      const quota = data.quota_total ? `${data.quota_used ?? 0} of ${data.quota_total} posts used today` : "Ready to publish";
+      setPublishAccount("ok", `Posting as @${data.username}`, quota);
     }
-    const quota = data.quota_total ? `${data.quota_used ?? 0} of ${data.quota_total} posts used today` : "Ready to publish";
-    setPublishAccount("ok", `Posting as @${data.username}`, quota);
     $("publish-start").disabled = false;
   } catch (err) {
-    setPublishAccount("error", "Instagram is not connected", err.message);
+    setPublishAccount("error", isYoutube ? "YouTube is not connected" : "Instagram is not connected", err.message);
   }
 }
 
 async function startPublish() {
   const name = state.publishTarget;
+  const isYoutube = state.publishPlatform === "youtube";
   const ok = await confirmAction({
-    title: "Post this to Instagram?",
-    message: "It goes live immediately. Instagram's API cannot delete posts, so removing it later means doing it by hand in the app.",
+    title: isYoutube ? "Post this as a YouTube Short?" : "Post this to Instagram?",
+    message: isYoutube
+      ? "It goes live on your channel immediately, using the privacy level you picked above."
+      : "It goes live immediately. Instagram's API cannot delete posts, so removing it later means doing it by hand in the app.",
     confirmLabel: "Post it",
   });
   if (!ok) return;
@@ -893,11 +928,21 @@ async function startPublish() {
   $("publish-progress-fill").style.width = "5%";
   $("publish-progress-fill").classList.remove("failed");
 
-  const res = await fetch(`/api/outputs/${encodeURIComponent(name)}/instagram/publish`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ caption: $("publish-caption").value }),
-  });
+  const res = isYoutube
+    ? await fetch(`/api/outputs/${encodeURIComponent(name)}/youtube/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: $("publish-yt-title").value,
+          description: $("publish-yt-description").value,
+          privacy: $("publish-yt-privacy").value,
+        }),
+      })
+    : await fetch(`/api/outputs/${encodeURIComponent(name)}/instagram/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caption: $("publish-caption").value }),
+      });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     $("publish-status").textContent = err.detail || "Could not start";
@@ -906,7 +951,10 @@ async function startPublish() {
     return;
   }
 
-  const percents = { checking: 10, container: 25, uploading: 55, processing: 80, publishing: 92, done: 100 };
+  const percents = isYoutube
+    ? { container: 20, uploading: 60, done: 100 }
+    : { checking: 10, container: 25, uploading: 55, processing: 80, publishing: 92, done: 100 };
+  const doneLabel = isYoutube ? "Posted to YouTube" : "Posted to Instagram";
   const { job_id } = await res.json();
   const source = new EventSource(`/api/generate/${job_id}/stream`);
   source.onmessage = async (msg) => {
@@ -918,8 +966,8 @@ async function startPublish() {
     } else if (event.type === "complete") {
       source.close();
       $("publish-progress-fill").style.width = "100%";
-      $("publish-status").textContent = "Posted to Instagram";
-      toast("Posted to Instagram");
+      $("publish-status").textContent = doneLabel;
+      toast(doneLabel);
       if (state.activeTab === "outputs") await loadOutputs();
       setTimeout(() => {
         $("publish-overlay").classList.add("hidden");
@@ -943,44 +991,60 @@ const INSIGHT_LABELS = {
   shares: "Shares",
 };
 
-async function openInsights(name) {
+const YOUTUBE_INSIGHT_LABELS = {
+  viewCount: "Views",
+  likeCount: "Likes",
+  commentCount: "Comments",
+  favoriteCount: "Favorites",
+  estimatedMinutesWatched: "Minutes watched",
+  averageViewDuration: "Avg. view (s)",
+};
+
+async function openInsights(name, platform = "instagram") {
   state.insightsTarget = name;
+  state.insightsPlatform = platform;
   $("insights-target").textContent = titleCase(name);
+  $("insights-permalink-label").textContent = platform === "youtube" ? "Open on YouTube" : "Open on Instagram";
   $("insights-grid").innerHTML = "";
   $("insights-note").textContent = "Loading…";
   $("insights-overlay").classList.remove("hidden");
   $("insights-modal").classList.remove("hidden");
   refreshIcons();
-  // Show what we already know, then try Instagram for fresher numbers.
-  await loadInsights(name, false);
-  await loadInsights(name, true);
+  // Show what we already know, then ask the platform for fresher numbers.
+  await loadInsights(name, false, platform);
+  await loadInsights(name, true, platform);
 }
 
-function renderInsights(data) {
+function renderInsights(data, platform) {
   const stats = data.stats || {};
-  const entries = Object.entries(INSIGHT_LABELS).filter(([key]) => stats[key] !== undefined);
+  const merged = platform === "youtube" ? { ...stats, ...(data.analytics || {}) } : stats;
+  const labels = platform === "youtube" ? YOUTUBE_INSIGHT_LABELS : INSIGHT_LABELS;
+  const entries = Object.entries(labels).filter(([key]) => merged[key] !== undefined);
   if (entries.length) {
     $("insights-grid").innerHTML = entries
-      .map(([key, label]) => `<div class="insight-card"><div class="insight-value">${stats[key]}</div><div class="insight-label">${label}</div></div>`)
+      .map(([key, label]) => `<div class="insight-card"><div class="insight-value">${merged[key]}</div><div class="insight-label">${label}</div></div>`)
       .join("");
   }
-  $("insights-permalink").href = data.permalink || "#";
-  $("insights-permalink").hidden = !data.permalink;
+  const link = platform === "youtube" ? data.url : data.permalink;
+  $("insights-permalink").href = link || "#";
+  $("insights-permalink").hidden = !link;
   return entries.length;
 }
 
-async function loadInsights(name, refresh) {
+async function loadInsights(name, refresh, platform = "instagram") {
   const note = $("insights-note");
-  if (refresh) note.textContent = "Asking Instagram for the latest…";
+  const platformName = platform === "youtube" ? "YouTube" : "Instagram";
+  if (refresh) note.textContent = `Asking ${platformName} for the latest…`;
   try {
-    const res = await fetch(`/api/outputs/${encodeURIComponent(name)}/instagram?refresh=${refresh ? "true" : "false"}`);
+    const path = platform === "youtube" ? "youtube" : "instagram";
+    const res = await fetch(`/api/outputs/${encodeURIComponent(name)}/${path}?refresh=${refresh ? "true" : "false"}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || "Could not load insights.");
 
-    const shown = renderInsights(data);
+    const shown = renderInsights(data, platform);
     note.textContent = shown
-      ? `Updated ${formatDate(data.stats_at) || "just now"}. Instagram takes a while to report numbers on a new post.`
-      : "Instagram has no numbers for this post yet. Try again in a few minutes.";
+      ? `Updated ${formatDate(data.stats_at) || "just now"}. ${platformName} takes a while to report numbers on a new post.`
+      : `${platformName} has no numbers for this post yet. Try again in a few minutes.`;
   } catch (err) {
     // A failed refresh must not blank out figures we already have on disk.
     const hasCached = $("insights-grid").children.length > 0;
@@ -2322,7 +2386,7 @@ async function loadSettings() {
   if (!names.includes(state.settingsSection)) state.settingsSection = names[0];
 
   names.forEach((groupName) => {
-    const groupFields = groups[groupName];
+    const groupFields = groups[groupName].filter((f) => !f.hidden);
     const meta = SETTINGS_GROUP_META[groupName] || { icon: "circle", description: "" };
 
     const missing = groupFields.filter((f) => f.secret && !f.is_set).length;
@@ -2386,6 +2450,7 @@ async function loadSettings() {
     });
 
     if (groupName === "Instagram") appendInstagramHelp(panel);
+    if (groupName === "YouTube") appendYoutubeHelp(panel);
     panelsEl.appendChild(panel);
   });
 
@@ -2438,6 +2503,85 @@ function appendInstagramHelp(panel) {
     `<span class="connection-status" id="ig-test-status">Save your details first, then test.</span>`;
   panel.appendChild(tester);
   tester.querySelector("#ig-test-btn").addEventListener("click", testInstagram);
+}
+
+function appendYoutubeHelp(panel) {
+  const steps = document.createElement("div");
+  steps.className = "setup-steps";
+  steps.innerHTML =
+    `<strong>${icon("list-ordered", 13)} Where to get these two values</strong>` +
+    `<ol>
+       <li>In <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console \u2192 Credentials</a>, enable <b>YouTube Data API v3</b> and <b>YouTube Analytics API</b> for your project.</li>
+       <li>Create Credentials \u2192 OAuth client ID \u2192 type <b>Desktop app</b>.</li>
+       <li>Copy the Client ID and Client Secret it shows into the two fields above and save.</li>
+       <li>Click <b>Connect YouTube</b> below, sign in with the Google account that owns your channel, and approve.</li>
+     </ol>`;
+  panel.appendChild(steps);
+
+  const status = document.createElement("div");
+  status.className = "connection-test";
+  status.innerHTML =
+    `<button class="btn-secondary" id="yt-connect-btn">${icon("plug-zap", 14)} Connect YouTube</button>` +
+    `<span class="connection-status" id="yt-connect-status">Not connected yet.</span>`;
+  panel.appendChild(status);
+  status.querySelector("#yt-connect-btn").addEventListener("click", connectYoutube);
+
+  refreshYoutubeStatus();
+}
+
+async function refreshYoutubeStatus() {
+  const status = $("yt-connect-status");
+  if (!status) return;
+  try {
+    const res = await fetch("/api/youtube/test");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Not connected.");
+    status.className = "connection-status ok";
+    status.textContent = `Connected to ${data.title}${data.subscriber_count ? ` \u00b7 ${data.subscriber_count} subscribers` : ""}`;
+  } catch (err) {
+    status.className = "connection-status";
+    status.textContent = err.message.includes("not set") || err.message.includes("not connected")
+      ? "Not connected yet."
+      : err.message;
+  }
+}
+
+async function connectYoutube() {
+  const btn = $("yt-connect-btn");
+  const status = $("yt-connect-status");
+  btn.disabled = true;
+  btn.innerHTML = `${icon("loader-circle", 14)} Starting\u2026`;
+  status.className = "connection-status";
+  status.textContent = "Opening Google sign-in in a new tab\u2026";
+  refreshIcons();
+  try {
+    const res = await fetch("/api/youtube/connect", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Could not start the connection.");
+    window.open(data.auth_url, "_blank", "noopener");
+
+    status.textContent = "Waiting for you to approve access in the browser tab\u2026";
+    for (let i = 0; i < 150; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const poll = await fetch(`/api/youtube/connect/status?session_id=${data.session_id}`);
+      const state = await poll.json();
+      if (state.status === "connected") {
+        status.className = "connection-status ok";
+        status.textContent = `Connected to ${state.channel.title}`;
+        toast("YouTube connected");
+        return;
+      }
+      if (state.status === "error") throw new Error(state.error || "Connection failed.");
+    }
+    throw new Error("Timed out waiting for approval. Try again.");
+  } catch (err) {
+    status.className = "connection-status error";
+    status.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `${icon("plug-zap", 14)} Connect YouTube`;
+    refreshIcons();
+  }
 }
 
 function buildSettingsInput(field) {
@@ -2691,8 +2835,10 @@ function renderOutputs() {
 
     const shapeLabel = { portrait: "Reel", landscape: "YouTube", square: "Square" }[o.orientation] || "";
     const posted = o.instagram && o.instagram.media_id;
+    const postedYoutube = o.youtube && o.youtube.video_id;
     const badges =
-      (posted ? `<span class="badge posted">${icon("check", 12)} posted</span>` : "") +
+      (posted ? `<span class="badge posted">${icon("check", 12)} IG posted</span>` : "") +
+      (postedYoutube ? `<span class="badge posted">${icon("check", 12)} YT posted</span>` : "") +
       [shapeLabel, o.language].filter(Boolean)
         .map((v) => `<span class="badge outline">${v}</span>`).join("");
 
@@ -2762,6 +2908,16 @@ function renderOutputs() {
     // Remix rebuilds from a scene plan, which poem reels do not have.
     if (o.kind !== "poem") {
       menu.push({ icon: "music", label: "Change music", onClick: () => openRemixModal(o) });
+    }
+    if (o.video_url) {
+      const duration = o.duration_seconds || 0;
+      if (duration && duration > 180) {
+        menu.push({ icon: "monitor-play", label: "Too long for a Short (>3 min)", onClick: () => toast("YouTube Shorts must be 3 minutes or under.", "error") });
+      } else if (postedYoutube) {
+        menu.push({ icon: "chart-no-axes-column", label: "YouTube insights", onClick: () => openInsights(o.name, "youtube") });
+      } else {
+        menu.push({ icon: "monitor-play", label: "Post as YouTube Short", onClick: () => openPublishModal(o.name, o.caption, "youtube") });
+      }
     }
     if (o.images?.length) {
       menu.push({ icon: "images", label: "View images", onClick: () => openLightbox(o.images, 0) });

@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from .. import config
 from ..assemble import get_audio_duration
 from .. import instagram
+from .. import youtube
 from ..pipeline import PipelineOptions
 from ..poetry import (
     MAX_POEM_CHARS,
@@ -41,6 +42,8 @@ from .schemas import (
     RemixRequest,
     StorySaveRequest,
     VoicePreviewRequest,
+    YoutubeConnectRequest,
+    YoutubePublishRequest,
 )
 
 app = FastAPI(title="Storytube")
@@ -187,6 +190,7 @@ def list_outputs() -> dict:
         caption_path = story_dir / "caption.txt"
         caption = caption_path.read_text(encoding="utf-8") if caption_path.exists() else ""
         posted = instagram.read_state(story_dir)
+        posted_yt = youtube.read_state(story_dir)
 
         size = meta.get("size") or ("1080x1920" if kind == "poem" else "1920x1080")
         try:
@@ -211,6 +215,7 @@ def list_outputs() -> dict:
                 "images": images,
                 "caption": caption,
                 "instagram": posted or None,
+                "youtube": posted_yt or None,
                 "description": meta.get("description") or meta.get("mood", ""),
                 "language": meta.get("language", ""),
                 "category": meta.get("category", ""),
@@ -427,6 +432,119 @@ def instagram_status(name: str, refresh: bool = False) -> dict:
             state["stats_at"] = datetime.now().isoformat(timespec="seconds")
             instagram.write_state(story_dir, state)
         except instagram.InstagramError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"posted": True, **state}
+
+
+@app.post("/api/youtube/connect")
+def youtube_connect() -> dict:
+    env = config_store.get_raw_env()
+    try:
+        session = youtube.start_connect(env.get("YOUTUBE_CLIENT_ID", ""), env.get("YOUTUBE_CLIENT_SECRET", ""))
+    except youtube.YouTubeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"session_id": session.id, "auth_url": session.auth_url}
+
+
+@app.get("/api/youtube/connect/status")
+def youtube_connect_status(session_id: str) -> dict:
+    session = youtube.get_connect_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Unknown connect session.")
+
+    channel = None
+    if session.channel:
+        if session.status == "connected":
+            config_store.update_env(
+                {
+                    "YOUTUBE_REFRESH_TOKEN": session.channel["refresh_token"],
+                    "YOUTUBE_CHANNEL_ID": session.channel["channel_id"],
+                    "YOUTUBE_CHANNEL_TITLE": session.channel["title"],
+                }
+            )
+        channel = {k: v for k, v in session.channel.items() if k != "refresh_token"}
+
+    return {"status": session.status, "error": session.error, "channel": channel}
+
+
+@app.get("/api/youtube/test")
+def youtube_test() -> dict:
+    env = config_store.get_raw_env()
+    try:
+        token = youtube.refresh_access_token(
+            env.get("YOUTUBE_CLIENT_ID", ""), env.get("YOUTUBE_CLIENT_SECRET", ""), env.get("YOUTUBE_REFRESH_TOKEN", "")
+        )
+        channel = youtube.get_channel(token)
+    except youtube.YouTubeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, **channel}
+
+
+@app.post("/api/outputs/{name}/youtube/publish")
+def youtube_publish(name: str, payload: YoutubePublishRequest) -> dict:
+    story_dir = resolve_output_dir(name)
+    video = video_file(story_dir)
+    if video is None:
+        raise HTTPException(status_code=404, detail="This output has no video to post.")
+
+    existing = youtube.read_state(story_dir)
+    if existing.get("video_id") and not payload.force:
+        raise HTTPException(status_code=409, detail="This video has already been posted to YouTube.")
+
+    env = config_store.get_raw_env()
+    try:
+        access_token = youtube.refresh_access_token(
+            env.get("YOUTUBE_CLIENT_ID", ""), env.get("YOUTUBE_CLIENT_SECRET", ""), env.get("YOUTUBE_REFRESH_TOKEN", "")
+        )
+    except youtube.YouTubeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
+        duration = get_audio_duration(video)
+    except Exception:  # noqa: BLE001
+        duration = None
+    if duration and duration > youtube.MAX_SHORT_SECONDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"This video is {duration:.0f}s, longer than YouTube's {youtube.MAX_SHORT_SECONDS}s Shorts limit.",
+        )
+
+    title = payload.title.strip() or name.replace("_", " ").title()[:100]
+    description = payload.description
+    if not description.strip():
+        caption_path = story_dir / "caption.txt"
+        description = caption_path.read_text(encoding="utf-8") if caption_path.exists() else ""
+
+    job = jobs.create_youtube_job(
+        story_dir.name, video, title, description, story_dir, access_token, payload.privacy
+    )
+    return {"job_id": job.id, "name": story_dir.name}
+
+
+@app.get("/api/outputs/{name}/youtube")
+def youtube_status(name: str, refresh: bool = False) -> dict:
+    story_dir = resolve_output_dir(name)
+    state = youtube.read_state(story_dir)
+    if not state.get("video_id"):
+        return {"posted": False}
+
+    if refresh:
+        env = config_store.get_raw_env()
+        try:
+            access_token = youtube.refresh_access_token(
+                env.get("YOUTUBE_CLIENT_ID", ""), env.get("YOUTUBE_CLIENT_SECRET", ""), env.get("YOUTUBE_REFRESH_TOKEN", "")
+            )
+            state["stats"] = youtube.get_stats(state["video_id"], access_token)
+            try:
+                analytics = youtube.get_analytics(env.get("YOUTUBE_CHANNEL_ID", ""), state["video_id"], access_token)
+                if analytics:
+                    state["analytics"] = analytics
+            except youtube.YouTubeError:
+                pass
+            state["stats_at"] = datetime.now().isoformat(timespec="seconds")
+            youtube.write_state(story_dir, state)
+        except youtube.YouTubeError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"posted": True, **state}
