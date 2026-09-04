@@ -257,7 +257,9 @@ def voice_preview(payload: VoicePreviewRequest) -> dict:
     key = safe_slug(f"{payload.provider}-{payload.voice}-{payload.language}")
     out_path = PREVIEW_DIR / f"{key}.mp3"
 
-    if not out_path.exists():
+    # A previous failure can leave a zero-byte file, which would replay as silence forever.
+    if not out_path.exists() or out_path.stat().st_size == 0:
+        out_path.unlink(missing_ok=True)
         PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
         language_code = SARVAM_LANGUAGE_CODES.get(payload.language.lower())
         if payload.provider == "sarvam" and language_code is None:
