@@ -214,18 +214,16 @@ h1 { font-family: var(--serif); font-size: 24px; margin: 0 0 2px; }
   top: 104px;
 }
 
-/* Columns rather than grid so cards of different heights pack without ragged gaps. */
+/* A grid, not columns: masonry columns fill top-to-bottom so the reading order jumps about. */
 .settings-layout {
-  column-count: 2;
-  column-gap: 20px;
-}
-.settings-layout .card {
-  break-inside: avoid;
-  margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  align-items: start;
 }
 
 @media (max-width: 1150px) {
-  .settings-layout { column-count: 1; }
+  .settings-layout { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 1180px) {
@@ -297,7 +295,9 @@ input:focus, textarea:focus {
 }
 
 .help-text { font-size: 11.5px; color: var(--text-muted); line-height: 1.5; }
-.help-text a { color: var(--accent); }
+/* Guidance links sit inside dense help text, so they stay quiet until hovered. */
+.help-text a { color: var(--text-muted); text-decoration-color: var(--border-strong); }
+.help-text a:hover { color: var(--accent); text-decoration-color: currentColor; }
 
 /* ---------------- Custom select ---------------- */
 
@@ -830,7 +830,7 @@ video { width: 100%; border-radius: var(--radius-sm); background: #000; display:
 
 /* ---------------- Settings ---------------- */
 
-.settings-field { padding: 15px 0; border-bottom: 1px solid var(--border); }
+.settings-field { padding: 16px 0; border-bottom: 1px solid var(--border); }
 .settings-field:last-child { border-bottom: none; padding-bottom: 0; }
 .settings-field-label-row {
   display: flex;
@@ -1365,6 +1365,37 @@ input.invalid, textarea.invalid {
   padding-top: 14px;
   border-top: 1px solid var(--border);
 }
+
+.setup-steps {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+.setup-steps strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.setup-steps svg { width: 13px; height: 13px; }
+.setup-steps ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 7px; }
+.setup-steps li { font-size: 12.5px; line-height: 1.55; color: var(--text-muted); }
+.setup-steps b { color: var(--text); font-weight: 600; }
+.setup-steps code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(43, 41, 36, 0.07);
+  color: var(--text);
+}
+.setup-steps a { color: var(--accent); }
 .connection-status { font-size: 12.5px; color: var(--text-faint); }
 .connection-status.ok { color: var(--success); }
 .connection-status.warn { color: #b8863b; }

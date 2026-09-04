@@ -2081,6 +2081,21 @@ async function loadSettings() {
     });
 
     if (groupName === "Instagram") {
+      const steps = document.createElement("div");
+      steps.className = "setup-steps";
+      steps.innerHTML =
+        `<strong>${icon("list-ordered", 13)} Getting these two values</strong>` +
+        `<ol>
+           <li>In the Instagram app, switch your account to <b>Professional</b> (Business or Creator). A personal account cannot post through the API.</li>
+           <li>Link it to a Facebook Page. Instagram &rarr; Settings &rarr; Sharing to other apps.</li>
+           <li>At <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener">developers.facebook.com/apps</a> create an app, type <b>Business</b>.</li>
+           <li>Open <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener">Graph API Explorer</a>, pick your app, and add these permissions:
+             <code>instagram_basic</code>, <code>instagram_content_publish</code>, <code>pages_show_list</code>, <code>pages_read_engagement</code>.</li>
+           <li>Press <b>Generate Access Token</b> and paste it above.</li>
+           <li>Run <code>me/accounts?fields=instagram_business_account</code> and copy the <code>id</code> into Account ID.</li>
+         </ol>`;
+      card.appendChild(steps);
+
       const tester = document.createElement("div");
       tester.className = "connection-test";
       tester.innerHTML =

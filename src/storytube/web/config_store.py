@@ -107,8 +107,8 @@ CONFIG_SCHEMA: list[dict[str, Any]] = [
         "group": "Instagram",
         "type": "text",
         "secret": False,
-        "help": "The numeric ID of your Instagram professional account, not your @handle.",
-        "guidance": "Find it in Meta's Graph API Explorer by requesting /me?fields=instagram_business_account.",
+        "help": "A long number like 17841400000000000. Not your @handle.",
+        "guidance": "In Graph API Explorer, run me/accounts?fields=instagram_business_account and copy the id it returns.",
         "guidance_url": "https://developers.facebook.com/tools/explorer/",
     },
     {
@@ -117,9 +117,9 @@ CONFIG_SCHEMA: list[dict[str, Any]] = [
         "group": "Instagram",
         "type": "password",
         "secret": True,
-        "help": "Long-lived token with instagram_business_content_publish. These expire after 60 days.",
-        "guidance": "Create a Meta app, connect your Instagram professional account, then generate a long-lived token.",
-        "guidance_url": "https://developers.facebook.com/docs/instagram-platform/content-publishing",
+        "help": "A long string starting with EAA. Expires after 60 days, then you generate a new one.",
+        "guidance": "Generate it in Graph API Explorer with instagram_basic, instagram_content_publish, pages_show_list and pages_read_engagement ticked.",
+        "guidance_url": "https://developers.facebook.com/tools/explorer/",
     },
     {
         "key": "OUTPUT_DIR",
