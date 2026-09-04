@@ -2455,8 +2455,10 @@ function renderOutputs() {
     const card = document.createElement("div");
     card.className = "output-card";
 
+    // Remixing rewrites the file at the same path, so key the URL on its mtime.
+    const bust = Math.round(o.modified_at || 0);
     const thumb = o.video_url
-      ? `<video controls preload="metadata" src="${o.video_url}"${o.images?.[0] ? ` poster="${o.images[0]}"` : ""}></video>`
+      ? `<video controls preload="metadata" src="${o.video_url}?v=${bust}"${o.images?.[0] ? ` poster="${o.images[0]}?v=${bust}"` : ""}></video>`
       : `<div class="output-thumb-empty">${icon("video-off", 22)}<span>No final video</span></div>`;
 
     const shapeLabel = { portrait: "Reel", landscape: "YouTube", square: "Square" }[o.orientation] || "";

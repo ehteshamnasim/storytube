@@ -587,21 +587,21 @@ def stream_generate(job_id: str):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/output", StaticFiles(directory=str(config.OUTPUT_DIR)), name="output")
-
-ASSETS_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
-
-
 class NoCacheStaticFiles(StaticFiles):
-    """Serve the app shell without caching so UI updates appear on a normal refresh."""
+    """Serve files without caching, so regenerated media and UI updates appear on a refresh."""
 
     def file_response(self, *args, **kwargs):
         response = super().file_response(*args, **kwargs)
         response.headers["Cache-Control"] = "no-cache, must-revalidate"
         return response
 
+
+config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# Remixing rewrites final_video.mp4 in place, so the browser must revalidate it.
+app.mount("/output", NoCacheStaticFiles(directory=str(config.OUTPUT_DIR)), name="output")
+
+ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
 if STATIC_DIR.exists():
     app.mount("/", NoCacheStaticFiles(directory=str(STATIC_DIR), html=True), name="static")
