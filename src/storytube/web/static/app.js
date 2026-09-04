@@ -764,6 +764,10 @@ function setupPublish() {
   $("publish-cancel").addEventListener("click", close);
   $("publish-overlay").addEventListener("click", close);
   $("publish-start").addEventListener("click", startPublish);
+  $("publish-open-settings").addEventListener("click", () => {
+    close();
+    switchTab("settings");
+  });
   $("publish-caption").addEventListener("input", (e) => {
     const n = e.target.value.length;
     $("publish-caption-count").textContent = `${n} / 2200`;
@@ -779,6 +783,18 @@ function setupPublish() {
   $("insights-refresh").addEventListener("click", () => loadInsights(state.insightsTarget, true));
 }
 
+function setPublishAccount(kind, title, detail) {
+  $("publish-account").className = `publish-account ${kind}`;
+  $("publish-account-icon").innerHTML = icon(
+    { ok: "circle-check", error: "circle-alert", loading: "loader-circle" }[kind] || "circle",
+    16
+  );
+  $("publish-account-title").textContent = title;
+  $("publish-account-detail").textContent = detail || "";
+  $("publish-open-settings").hidden = kind !== "error";
+  refreshIcons();
+}
+
 async function openPublishModal(name, caption) {
   state.publishTarget = name;
   $("publish-target").textContent = titleCase(name);
@@ -787,8 +803,7 @@ async function openPublishModal(name, caption) {
   $("publish-progress-track").hidden = true;
   $("publish-status").hidden = true;
   $("publish-start").disabled = true;
-  $("publish-account").className = "connection-status";
-  $("publish-account").textContent = "Checking your account…";
+  setPublishAccount("loading", "Checking your account…", "");
   $("publish-overlay").classList.remove("hidden");
   $("publish-modal").classList.remove("hidden");
   refreshIcons();
@@ -797,14 +812,14 @@ async function openPublishModal(name, caption) {
     const res = await fetch("/api/instagram/test", { method: "POST" });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || "Could not verify your credentials.");
-    const quota = data.quota_total ? ` · ${data.quota_used ?? 0}/${data.quota_total} posts used today` : "";
-    if (!data.can_publish) throw new Error(`@${data.username} is a ${data.account_type} account and cannot publish.`);
-    $("publish-account").className = "connection-status ok";
-    $("publish-account").textContent = `Posting as @${data.username}${quota}`;
+    if (!data.can_publish) {
+      throw new Error(`@${data.username} is a ${data.account_type} account. Only Business or Creator accounts can publish.`);
+    }
+    const quota = data.quota_total ? `${data.quota_used ?? 0} of ${data.quota_total} posts used today` : "Ready to publish";
+    setPublishAccount("ok", `Posting as @${data.username}`, quota);
     $("publish-start").disabled = false;
   } catch (err) {
-    $("publish-account").className = "connection-status error";
-    $("publish-account").textContent = err.message;
+    setPublishAccount("error", "Instagram is not connected", err.message);
   }
 }
 

@@ -927,16 +927,24 @@
     </div>
 
     <div class="modal-body">
-      <div class="notice warn">
-        <i data-lucide="triangle-alert"></i>
-        <span>Instagram has no delete endpoint. Once this is posted it can only be removed by hand in the app.</span>
+      <div class="publish-account" id="publish-account">
+        <span class="publish-account-icon" id="publish-account-icon"><i data-lucide="loader-circle"></i></span>
+        <div class="publish-account-text">
+          <strong id="publish-account-title">Checking your account…</strong>
+          <span id="publish-account-detail"></span>
+        </div>
+        <button class="btn-ghost" id="publish-open-settings" hidden><i data-lucide="settings"></i> Settings</button>
       </div>
-      <div id="publish-account" class="connection-status">Checking your account…</div>
 
       <div class="field-row">
         <div class="label-row"><label for="publish-caption">Caption</label><span class="counter" id="publish-caption-count">0 / 2200</span></div>
-        <textarea id="publish-caption" rows="10"></textarea>
+        <textarea id="publish-caption" rows="9"></textarea>
         <div class="help-text">Posted as a Reel. AI-generated content is disclosed to Meta automatically.</div>
+      </div>
+
+      <div class="notice warn">
+        <i data-lucide="triangle-alert"></i>
+        <span>Instagram has no delete endpoint. Once posted, it can only be removed by hand in the app.</span>
       </div>
 
       <div class="progress-bar-track" id="publish-progress-track" hidden>
