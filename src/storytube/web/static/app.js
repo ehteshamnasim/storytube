@@ -228,6 +228,7 @@ function enhanceAllSelects(root) {
 }
 
 document.addEventListener("click", closeAllSelects);
+document.addEventListener("click", closeAllCardMenus);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAllSelects(); });
 
 /* ---------------- Tabs ---------------- */
@@ -2431,17 +2432,19 @@ function renderOutputs() {
       ? `<video controls preload="metadata" src="${o.video_url}"${o.images?.[0] ? ` poster="${o.images[0]}"` : ""}></video>`
       : `<div class="output-thumb-empty">${icon("video-off", 22)}<span>No final video</span></div>`;
 
-    const shapeLabel = { portrait: "reel", landscape: "youtube", square: "square" }[o.orientation] || "";
+    const shapeLabel = { portrait: "Reel", landscape: "YouTube", square: "Square" }[o.orientation] || "";
     const posted = o.instagram && o.instagram.media_id;
     const badges =
       (posted ? `<span class="badge posted">${icon("check", 12)} posted</span>` : "") +
-      [shapeLabel, o.kind === "poem" ? "poem" : o.category, o.language, o.voice].filter(Boolean)
+      [shapeLabel, o.language].filter(Boolean)
         .map((v) => `<span class="badge outline">${v}</span>`).join("");
 
-    const gallery = (o.images || []).length
-      ? `<div class="scene-strip">${o.images
+    const shown = (o.images || []).slice(0, 4);
+    const extra = (o.images || []).length - shown.length;
+    const gallery = shown.length
+      ? `<div class="scene-strip">${shown
           .map((src, i) => `<img src="${src}" alt="Scene ${i + 1}" loading="lazy" data-full="${src}" />`)
-          .join("")}</div>`
+          .join("")}${extra > 0 ? `<span class="scene-more">+${extra}</span>` : ""}</div>`
       : "";
 
     card.innerHTML = `
@@ -2452,11 +2455,8 @@ function renderOutputs() {
         ${badges ? `<div class="output-badges">${badges}</div>` : ""}
         ${gallery}
         <div class="output-meta-row">
-          <span>${icon("clock", 13)} ${formatDuration(o.duration_seconds)}</span>
-          <span>${o.kind === "poem"
-            ? `${icon("feather", 13)} ${o.images.length ? "poem card" : "poem"}`
-            : `${icon("film", 13)} ${o.scene_count ?? "—"} scenes`}</span>
-          <span>${icon("calendar", 13)} ${formatDate(o.created_at || o.modified_at)}</span>
+          <span>${icon("clock", 12)} ${formatDuration(o.duration_seconds)}</span>
+          <span>${icon("calendar", 12)} ${formatDate(o.created_at || o.modified_at)}</span>
         </div>
       </div>
       <div class="output-actions"></div>`;
@@ -2468,72 +2468,99 @@ function renderOutputs() {
     const actions = card.querySelector(".output-actions");
     if (o.video_url) {
       const dl = document.createElement("a");
-      dl.className = "btn-secondary";
+      dl.className = "btn-secondary primary-action";
       dl.href = `/api/outputs/${encodeURIComponent(o.name)}/download`;
       dl.download = `${o.name}.mp4`;
       dl.innerHTML = `${icon("download", 14)} Download`;
       actions.appendChild(dl);
     }
 
-    // Remix rebuilds from a scene plan, which poem reels do not have.
-    if (o.kind !== "poem") {
-      const remix = document.createElement("button");
-      remix.className = "btn-secondary";
-      remix.innerHTML = `${icon("music", 14)} Music`;
-      remix.title = "Change the background music";
-      remix.addEventListener("click", () => openRemixModal(o));
-      actions.appendChild(remix);
-    }
-
+    const menu = [];
     // Reels are vertical, so a landscape video would be cropped to pieces.
     if (o.video_url && o.orientation !== "landscape") {
-      const ig = document.createElement("button");
-      ig.className = "btn-secondary";
-      if (posted) {
-        ig.innerHTML = `${icon("chart-no-axes-column", 14)} Insights`;
-        ig.title = "See how the post is doing";
-        ig.addEventListener("click", () => openInsights(o.name));
-      } else {
-        ig.innerHTML = `${icon("camera", 14)} Post`;
-        ig.title = "Post to Instagram";
-        ig.addEventListener("click", () => openPublishModal(o.name, o.caption));
-      }
-      actions.appendChild(ig);
+      menu.push(posted
+        ? { icon: "chart-no-axes-column", label: "Post insights", onClick: () => openInsights(o.name) }
+        : { icon: "camera", label: "Post to Instagram", onClick: () => openPublishModal(o.name, o.caption) });
     }
-    const del = document.createElement("button");
-    del.className = "btn-danger";
-    del.innerHTML = `${icon("trash-2", 14)} Delete`;
-    del.addEventListener("click", async () => {
-      const ok = await confirmAction({
-        title: `Delete "${titleCase(o.name)}"?`,
-        message: "The video, scene images and voice-over files are removed from disk. This can't be undone.",
-        confirmLabel: "Delete video",
-      });
-      if (!ok) return;
-      del.disabled = true;
-      del.innerHTML = `${icon("loader-circle", 14)} Deleting\u2026`;
-      refreshIcons();
-      try {
-        const res = await fetch(`/api/outputs/${encodeURIComponent(o.name)}`, { method: "DELETE" });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.detail || `Server returned ${res.status}`);
-        }
-        await loadOutputs();
-        toast(`Deleted "${titleCase(o.name)}"`);
-      } catch (err) {
-        del.disabled = false;
-        del.innerHTML = `${icon("trash-2", 14)} Delete`;
-        refreshIcons();
-        toast(err.message || "Could not delete that output", "error");
-      }
-    });
-    actions.appendChild(del);
+    // Remix rebuilds from a scene plan, which poem reels do not have.
+    if (o.kind !== "poem") {
+      menu.push({ icon: "music", label: "Change music", onClick: () => openRemixModal(o) });
+    }
+    if (o.images?.length) {
+      menu.push({ icon: "images", label: "View images", onClick: () => openLightbox(o.images, 0) });
+    }
+    menu.push({ icon: "trash-2", label: "Delete", danger: true, onClick: () => deleteOutput(o) });
 
+    actions.appendChild(buildCardMenu(menu));
     grid.appendChild(card);
   });
 
   refreshIcons();
+}
+
+function buildCardMenu(items) {
+  const wrap = document.createElement("div");
+  wrap.className = "card-menu";
+
+  const trigger = document.createElement("button");
+  trigger.className = "icon-btn menu-trigger";
+  trigger.title = "More actions";
+  trigger.setAttribute("aria-label", "More actions");
+  trigger.innerHTML = icon("ellipsis-vertical", 16);
+
+  const popup = document.createElement("div");
+  popup.className = "menu-popup hidden";
+  items.forEach((item) => {
+    const btn = document.createElement("button");
+    btn.className = item.danger ? "menu-item danger" : "menu-item";
+    btn.innerHTML = `${icon(item.icon, 14)} ${item.label}`;
+    btn.addEventListener("click", () => {
+      popup.classList.add("hidden");
+      item.onClick();
+    });
+    popup.appendChild(btn);
+  });
+
+  trigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const wasOpen = !popup.classList.contains("hidden");
+    closeAllCardMenus();
+    popup.classList.toggle("hidden", wasOpen);
+    // Flip upwards when there is not enough room below.
+    if (!wasOpen) {
+      const room = window.innerHeight - trigger.getBoundingClientRect().bottom;
+      popup.classList.toggle("drop-up", room < popup.offsetHeight + 16);
+    }
+    refreshIcons();
+  });
+
+  wrap.appendChild(trigger);
+  wrap.appendChild(popup);
+  return wrap;
+}
+
+function closeAllCardMenus() {
+  document.querySelectorAll(".menu-popup").forEach((p) => p.classList.add("hidden"));
+}
+
+async function deleteOutput(o) {
+  const ok = await confirmAction({
+    title: `Delete "${titleCase(o.name)}"?`,
+    message: "The video, scene images and voice-over files are removed from disk. This can't be undone.",
+    confirmLabel: "Delete video",
+  });
+  if (!ok) return;
+  try {
+    const res = await fetch(`/api/outputs/${encodeURIComponent(o.name)}`, { method: "DELETE" });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Server returned ${res.status}`);
+    }
+    await loadOutputs();
+    toast(`Deleted "${titleCase(o.name)}"`);
+  } catch (err) {
+    toast(err.message || "Could not delete that output", "error");
+  }
 }
 
 function setupLightbox() {

@@ -841,16 +841,66 @@ video { width: 100%; border-radius: var(--radius-sm); background: #000; display:
 .output-meta-row span { display: inline-flex; align-items: center; gap: 4px; }
 .output-meta-row svg { width: 12px; height: 12px; }
 
-.output-actions { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 14px 14px; }
-.output-actions .btn-secondary, .output-actions .btn-danger, .output-actions .btn-ghost {
-  /* Wrap into rows rather than squeezing labels onto one line. */
-  flex: 1 1 auto;
-  min-width: 68px;
-  padding: 7px 9px;
-  font-size: 11.5px;
+.output-actions { display: flex; align-items: center; gap: 6px; padding: 0 14px 14px; }
+.output-actions .primary-action {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 12px;
   white-space: nowrap;
+  justify-content: center;
 }
 .output-actions svg { width: 13px; height: 13px; }
+
+.card-menu { position: relative; flex-shrink: 0; }
+.menu-trigger { width: 34px; height: 34px; }
+.menu-popup {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  min-width: 186px;
+  padding: 5px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.menu-popup.drop-up { top: auto; bottom: calc(100% + 6px); }
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+}
+.menu-item:hover { background: var(--bg-elevated); }
+.menu-item.danger { color: var(--danger); }
+.menu-item.danger:hover { background: var(--danger-soft); }
+.menu-item svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+.scene-more {
+  display: grid;
+  place-items: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--bg-sunken);
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
+}
 .create-side .output-actions { padding: 14px 0 0; }
 
 /* ---------------- Empty & loading states ---------------- */
