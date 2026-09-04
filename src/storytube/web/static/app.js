@@ -1075,7 +1075,25 @@ function poemWarnings(lines) {
   } else if (!geminiSet) {
     warnings.push(["info", "No Gemini key, so the caption will just be your poem plus general hashtags."]);
   }
+
+  if (state.poemNarrate && lines.length) {
+    const voice = $("poem-voice").value;
+    const expected = { ur: "arabic", ar: "arabic", hi: "devanagari", bn: "bengali", en: "latin" }[voice.split("-")[0]];
+    const poemScript = scriptOf(lines.join(" "));
+    // Latin text is read by every voice; a mismatched Indic/Arabic script returns no audio.
+    if (poemScript !== "latin" && expected && poemScript !== expected) {
+      const reader = $("poem-voice").selectedOptions[0]?.textContent || voice;
+      warnings.push(["danger", `Your poem is in ${titleCase(poemScript)} script but ${reader} cannot read it. Pick a matching reader, or turn the voice-over off.`]);
+    }
+  }
   return warnings;
+}
+
+function scriptOf(text) {
+  if (/[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF]/.test(text)) return "arabic";
+  if (/[\u0900-\u097F]/.test(text)) return "devanagari";
+  if (/[\u0980-\u09FF]/.test(text)) return "bengali";
+  return "latin";
 }
 
 function gatherPoemOptions() {
@@ -1303,6 +1321,10 @@ function setPoemNarrate(on) {
 async function previewPoemVoice() {
   const btn = $("poem-voice-listen");
   const audio = $("poem-voice-audio");
+  const voice = $("poem-voice").value;
+  // Audition the voice with text in its own locale; another language returns no audio.
+  const language = EDGE_LOCALE_LANGUAGE[voice.split("-")[0]] || "English";
+
   btn.disabled = true;
   btn.innerHTML = `${icon("loader-circle", 14)} Loading…`;
   refreshIcons();
@@ -1310,10 +1332,10 @@ async function previewPoemVoice() {
     const res = await fetch("/api/voice-preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider: "edge", voice: $("poem-voice").value, language: $("poem-language").value }),
+      body: JSON.stringify({ provider: "edge", voice, language }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "That voice could not read this language.");
+    if (!res.ok) throw new Error(data.detail || "That voice could not produce a sample.");
     audio.src = data.url;
     await audio.play();
   } catch (err) {
