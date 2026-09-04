@@ -1681,6 +1681,9 @@ function setupPoetry() {
   $("poem-publish").addEventListener("click", () => {
     if (state.lastPoemName) openPublishModal(state.lastPoemName, $("poem-caption").value);
   });
+  $("poem-publish-yt").addEventListener("click", () => {
+    if (state.lastPoemName) openPublishModal(state.lastPoemName, $("poem-caption").value, "youtube");
+  });
 
   setupCropDragging();
   $("poem-size").addEventListener("change", () => {
@@ -1991,6 +1994,9 @@ function setupGenerate() {
   $("result-publish").addEventListener("click", () => {
     if (state.lastStoryName) openPublishModal(state.lastStoryName, "");
   });
+  $("result-publish-yt").addEventListener("click", () => {
+    if (state.lastStoryName) openPublishModal(state.lastStoryName, "", "youtube");
+  });
 
   $("generate-btn").addEventListener("click", () => {
     if (!validateStoryForm()) return;
@@ -2212,9 +2218,10 @@ async function startGeneration() {
         $("result-download").href = `/api/outputs/${encodeURIComponent(story_name)}/download`;
         $("result-download").download = `${story_name}.mp4`;
         state.lastStoryName = story_name;
-        // Instagram reels are vertical, so only offer it when the render is not landscape.
+        // Instagram reels and YouTube Shorts are both vertical, so only offer them when the render is not landscape.
         const [rw, rh] = (opts.size || "1920x1080").split("x").map(Number);
         $("result-publish").hidden = rw >= rh;
+        $("result-publish-yt").hidden = rw >= rh;
         toast("Video ready");
       } else if (event.type === "error") {
         const cardIcon = document.querySelector("#progress-card .card-icon");
@@ -2799,7 +2806,7 @@ function renderOutputs() {
   grid.innerHTML = "";
 
   if (!items.length) {
-    const filterLabel = { portrait: "Reels & Shorts", landscape: "YouTube", square: "Square" }[state.outputFilter];
+    const filterLabel = { portrait: "Reels & Shorts", landscape: "Landscape", square: "Square" }[state.outputFilter];
     let reason = "Nothing here matches your search yet.";
     if (query && filterLabel) reason = `No ${filterLabel} videos match "${escapeHtml(query)}".`;
     else if (query) reason = `Nothing here matches "${escapeHtml(query)}". Try a different search term.`;
@@ -2833,7 +2840,7 @@ function renderOutputs() {
       ? `<video controls preload="metadata" src="${o.video_url}?v=${bust}"${o.images?.[0] ? ` poster="${o.images[0]}?v=${bust}"` : ""}></video>`
       : `<div class="output-thumb-empty">${icon("video-off", 22)}<span>No final video</span></div>`;
 
-    const shapeLabel = { portrait: "Reel", landscape: "YouTube", square: "Square" }[o.orientation] || "";
+    const shapeLabel = { portrait: "Short", landscape: "Landscape", square: "Square" }[o.orientation] || "";
     const posted = o.instagram && o.instagram.media_id;
     const postedYoutube = o.youtube && o.youtube.video_id;
     const badges =
@@ -2871,8 +2878,10 @@ function renderOutputs() {
     const actions = card.querySelector(".output-actions");
     const menu = [];
 
-    // Posting is the point of a reel, so it leads. Landscape cannot be a reel.
+    // Posting is the point of a reel, so it leads. Landscape cannot be a Short or a Reel.
     const canPost = o.video_url && o.orientation !== "landscape";
+    const shortDuration = o.duration_seconds || 0;
+    const eligibleForYoutube = canPost && (!shortDuration || shortDuration <= 180);
     if (canPost) {
       const ig = document.createElement("button");
       ig.className = "btn-primary primary-action";
@@ -2884,6 +2893,19 @@ function renderOutputs() {
         ig.addEventListener("click", () => openPublishModal(o.name, o.caption));
       }
       actions.appendChild(ig);
+    }
+    if (eligibleForYoutube) {
+      const yt = document.createElement("button");
+      yt.className = "btn-secondary primary-action";
+      yt.title = "YouTube Shorts";
+      if (postedYoutube) {
+        yt.innerHTML = `${icon("chart-no-axes-column", 14)} Shorts`;
+        yt.addEventListener("click", () => openInsights(o.name, "youtube"));
+      } else {
+        yt.innerHTML = `${icon("monitor-play", 14)} Shorts`;
+        yt.addEventListener("click", () => openPublishModal(o.name, o.caption, "youtube"));
+      }
+      actions.appendChild(yt);
     }
 
     if (o.video_url) {
@@ -2909,15 +2931,8 @@ function renderOutputs() {
     if (o.kind !== "poem") {
       menu.push({ icon: "music", label: "Change music", onClick: () => openRemixModal(o) });
     }
-    if (o.video_url) {
-      const duration = o.duration_seconds || 0;
-      if (duration && duration > 180) {
-        menu.push({ icon: "monitor-play", label: "Too long for a Short (>3 min)", onClick: () => toast("YouTube Shorts must be 3 minutes or under.", "error") });
-      } else if (postedYoutube) {
-        menu.push({ icon: "chart-no-axes-column", label: "YouTube insights", onClick: () => openInsights(o.name, "youtube") });
-      } else {
-        menu.push({ icon: "monitor-play", label: "Post as YouTube Short", onClick: () => openPublishModal(o.name, o.caption, "youtube") });
-      }
+    if (canPost && !eligibleForYoutube) {
+      menu.push({ icon: "monitor-play", label: "Too long for a Short (>3 min)", onClick: () => toast("YouTube Shorts must be 3 minutes or under.", "error") });
     }
     if (o.images?.length) {
       menu.push({ icon: "images", label: "View images", onClick: () => openLightbox(o.images, 0) });
