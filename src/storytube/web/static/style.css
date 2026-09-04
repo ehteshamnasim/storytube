@@ -772,10 +772,17 @@ video { width: 100%; border-radius: var(--radius-sm); background: #000; display:
   transition: box-shadow 0.18s, transform 0.18s;
 }
 .output-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
-.output-card video { border-radius: 0; aspect-ratio: 16 / 9; object-fit: cover; }
+.output-card video {
+  border-radius: 0;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  background: #14120f;
+  display: block;
+  width: 100%;
+}
 
 .output-thumb-empty {
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 16 / 10;
   display: grid;
   place-items: center;
   gap: 8px;
@@ -830,12 +837,14 @@ video { width: 100%; border-radius: var(--radius-sm); background: #000; display:
 .output-meta-row span { display: inline-flex; align-items: center; gap: 5px; }
 .output-meta-row svg { width: 13px; height: 13px; }
 
-.output-actions { display: flex; gap: 6px; padding: 0 17px 16px; }
+.output-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 17px 16px; }
 .output-actions .btn-secondary, .output-actions .btn-danger, .output-actions .btn-ghost {
-  flex: 1;
-  padding: 8px 8px;
+  /* Wrap into rows rather than squeezing four labels onto one line. */
+  flex: 1 1 auto;
+  min-width: 92px;
+  padding: 8px 10px;
   font-size: 12px;
-  min-width: 0;
+  white-space: nowrap;
 }
 .create-side .output-actions { padding: 14px 0 0; }
 

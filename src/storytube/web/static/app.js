@@ -1877,6 +1877,9 @@ async function startGeneration() {
         $("result-download").href = `/api/outputs/${encodeURIComponent(story_name)}/download`;
         $("result-download").download = `${story_name}.mp4`;
         state.lastStoryName = story_name;
+        // Instagram reels are vertical, so only offer it when the render is not landscape.
+        const [rw, rh] = (opts.size || "1920x1080").split("x").map(Number);
+        $("result-publish").hidden = rw >= rh;
         toast("Video ready");
       } else if (event.type === "error") {
         const cardIcon = document.querySelector("#progress-card .card-icon");
@@ -2410,7 +2413,7 @@ function renderOutputs() {
     card.className = "output-card";
 
     const thumb = o.video_url
-      ? `<video controls preload="metadata" src="${o.video_url}"></video>`
+      ? `<video controls preload="metadata" src="${o.video_url}"${o.images?.[0] ? ` poster="${o.images[0]}"` : ""}></video>`
       : `<div class="output-thumb-empty">${icon("video-off", 22)}<span>No final video</span></div>`;
 
     const shapeLabel = { portrait: "reel", landscape: "youtube", square: "square" }[o.orientation] || "";
@@ -2467,7 +2470,8 @@ function renderOutputs() {
       actions.appendChild(remix);
     }
 
-    if (o.video_url) {
+    // Reels are vertical, so a landscape video would be cropped to pieces.
+    if (o.video_url && o.orientation !== "landscape") {
       const ig = document.createElement("button");
       ig.className = "btn-secondary";
       if (posted) {
