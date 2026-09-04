@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Storytube Studio</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="boot" id="boot">
+    <span class="boot-mark"><i data-lucide="sparkles"></i></span>
+    <span class="boot-label">Loading your studio…</span>
+  </div>
+
+  <div class="app">
+
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark"><i data-lucide="sparkles"></i></span>
+        <span class="brand-text">Storytube<small>Studio</small></span>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-item active" data-tab="story">
+          <span class="nav-icon"><i data-lucide="clapperboard"></i></span>
+          <span class="nav-label">Create Video</span>
+        </button>
+        <button class="nav-item" data-tab="outputs">
+          <span class="nav-icon"><i data-lucide="library"></i></span>
+          <span class="nav-label">Outputs</span>
+          <span class="nav-count" id="nav-outputs-count"></span>
+        </button>
+        <button class="nav-item" data-tab="prompts">
+          <span class="nav-icon"><i data-lucide="file-text"></i></span>
+          <span class="nav-label">Prompts</span>
+        </button>
+        <button class="nav-item" data-tab="settings">
+          <span class="nav-icon"><i data-lucide="settings"></i></span>
+          <span class="nav-label">Settings</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="footer-card">
+          <i data-lucide="shield-check"></i>
+          <div>
+            <strong>Local &amp; private</strong>
+            <span>Runs fully on your own API keys.</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="content">
+
+      <!-- ================= CREATE ================= -->
+      <section class="tab" id="tab-story">
+        <header class="page-header">
+          <div class="page-title-wrap">
+            <span class="page-icon"><i data-lucide="clapperboard"></i></span>
+            <div>
+              <h1>Create a video</h1>
+              <p class="page-subtitle">Write or load a story, pick a look and a voice, then generate.</p>
+            </div>
+          </div>
+          <div class="page-header-actions">
+            <button class="btn-ghost" id="open-advanced-btn">
+              <i data-lucide="sliders-horizontal"></i> Advanced
+            </button>
+            <button class="btn-primary" id="generate-btn">
+              <i data-lucide="wand-sparkles"></i> Generate video
+            </button>
+          </div>
+        </header>
+
+        <div class="page-body">
+          <div class="create-layout">
+
+            <div class="create-main">
+              <div class="card">
+                <div class="card-head">
+                  <span class="card-icon"><i data-lucide="book-open"></i></span>
+                  <div>
+                    <h2>Story</h2>
+                    <p class="card-sub">Load one you saved earlier, or write something new.</p>
+                  </div>
+                </div>
+                <div class="field-grid two">
+                  <div class="field-row">
+                    <label>Load existing story</label>
+                    <select id="story-select"><option value="">New story</option></select>
+                  </div>
+                  <div class="field-row">
+                    <label for="story-name">Story name</label>
+                    <input id="story-name" type="text" placeholder="e.g. thirsty_dog" autocomplete="off" />
+                    <div class="field-error" id="story-name-error" hidden></div>
+                  </div>
+                </div>
+                <div class="field-row">
+                  <div class="label-row">
+                    <label for="story-text">Story text</label>
+                    <span class="counter" id="story-counter">0 words</span>
+                  </div>
+                  <textarea id="story-text" rows="9" placeholder="Paste or write your story here..."></textarea>
+                  <div class="field-error" id="story-text-error" hidden></div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-head">
+                  <span class="card-icon"><i data-lucide="languages"></i></span>
+                  <div>
+                    <h2>Category &amp; language</h2>
+                    <p class="card-sub">Category picks the prompt template used to plan scenes.</p>
+                  </div>
+                </div>
+                <div class="field-grid two">
+                  <div class="field-row">
+                    <label>Category</label>
+                    <select id="opt-category"></select>
+                  </div>
+                  <div class="field-row">
+                    <label>Narration language</label>
+                    <select id="opt-language">
+                      <option>English</option>
+                      <option>Hindi</option>
+                      <option>Urdu</option>
+                      <option>Hinglish</option>
+                      <option>Arabic</option>
+                      <option>Bengali</option>
+                      <option>Tamil</option>
+                      <option>Telugu</option>
+                      <option>Spanish</option>
+                      <option>French</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-head">
+                  <span class="card-icon"><i data-lucide="palette"></i></span>
+                  <div>
+                    <h2>Visual style</h2>
+                    <p class="card-sub">Pick a preset, then tweak the wording if you like.</p>
+                  </div>
+                </div>
+                <div class="chip-row" id="style-presets"></div>
+                <div class="field-row">
+                  <label>Style prompt</label>
+                  <textarea id="opt-style" rows="2">anime/manga style</textarea>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-head">
+                  <span class="card-icon"><i data-lucide="mic"></i></span>
+                  <div>
+                    <h2>Voice-over</h2>
+                    <p class="card-sub">Who narrates your story.</p>
+                  </div>
+                </div>
+                <div class="segmented three" id="tts-segmented">
+                  <button type="button" class="segment active" data-value="edge">
+                    <i data-lucide="badge-check"></i> edge-tts <small>free</small>
+                  </button>
+                  <button type="button" class="segment" data-value="indicf5">
+                    <i data-lucide="cpu"></i> IndicF5 <small>free, local</small>
+                  </button>
+                  <button type="button" class="segment" data-value="sarvam">
+                    <i data-lucide="globe"></i> Sarvam <small>paid API</small>
+                  </button>
+                </div>
+                <select id="opt-tts-provider" class="visually-hidden">
+                  <option value="edge">edge</option>
+                  <option value="indicf5">indicf5</option>
+                  <option value="sarvam">sarvam</option>
+                </select>
+
+                <div id="edge-fields" class="field-row">
+                  <label>Voice</label>
+                  <div class="row-with-button">
+                    <select id="opt-voice">
+                    <option value="en-US-AriaNeural">English (US) — Aria, female</option>
+                    <option value="en-US-GuyNeural">English (US) — Guy, male</option>
+                    <option value="en-GB-SoniaNeural">English (UK) — Sonia, female</option>
+                    <option value="en-IN-NeerjaNeural">English (India) — Neerja, female</option>
+                    <option value="en-IN-PrabhatNeural">English (India) — Prabhat, male</option>
+                    <option value="hi-IN-SwaraNeural">Hindi — Swara, female</option>
+                    <option value="hi-IN-MadhurNeural">Hindi — Madhur, male</option>
+                    <option value="ur-PK-UzmaNeural">Urdu — Uzma, female</option>
+                    <option value="ur-PK-AsadNeural">Urdu — Asad, male</option>
+                    <option value="ar-SA-ZariyahNeural">Arabic — Zariyah, female</option>
+                    <option value="ar-SA-HamedNeural">Arabic — Hamed, male</option>
+                    <option value="bn-IN-TanishaaNeural">Bengali — Tanishaa, female</option>
+                    <option value="bn-IN-BashkarNeural">Bengali — Bashkar, male</option>
+                    <option value="ta-IN-PallaviNeural">Tamil — Pallavi, female</option>
+                    <option value="ta-IN-ValluvarNeural">Tamil — Valluvar, male</option>
+                    <option value="te-IN-ShrutiNeural">Telugu — Shruti, female</option>
+                    <option value="te-IN-MohanNeural">Telugu — Mohan, male</option>
+                    <option value="es-ES-ElviraNeural">Spanish — Elvira, female</option>
+                    <option value="fr-FR-DeniseNeural">French — Denise, female</option>
+                  </select>
+                    <button class="btn-secondary preview-btn" data-preview="edge"><i data-lucide="volume-2"></i> Listen</button>
+                  </div>
+                  <div class="help-text">The voice locale must match your narration language, otherwise edge-tts returns no audio.</div>
+                </div>
+
+                <div id="sarvam-fields" class="field-row" hidden>
+                  <label>Speaker</label>
+                  <div class="row-with-button">
+                    <select id="opt-sarvam-speaker">
+                      <option value="kabir">Kabir — male, warm storyteller</option>
+                      <option value="shubh">Shubh — male, bright</option>
+                      <option value="manan">Manan — male, calm</option>
+                      <option value="aditya">Aditya — male, energetic</option>
+                      <option value="rahul">Rahul — male, neutral</option>
+                      <option value="dev">Dev — male, deep</option>
+                      <option value="varun">Varun — male, youthful</option>
+                      <option value="ritu">Ritu — female, warm</option>
+                      <option value="priya">Priya — female, gentle</option>
+                    </select>
+                    <button class="btn-secondary preview-btn" data-preview="sarvam"><i data-lucide="volume-2"></i> Listen</button>
+                  </div>
+                </div>
+
+                <div id="indicf5-fields" class="field-row" hidden>
+                  <label>Reference voice</label>
+                  <div class="row-with-button">
+                    <select id="opt-indicf5-voice">
+                      <option value="mar_m">Male — calm storyteller</option>
+                      <option value="mar_f">Female — neutral narrator</option>
+                      <option value="mar_f_warm">Female — warm and expressive</option>
+                      <option value="pan_f">Female — bright and happy</option>
+                    </select>
+                    <button class="btn-secondary preview-btn" data-preview="indicf5"><i data-lucide="volume-2"></i> Listen</button>
+                  </div>
+                  <div class="help-text">Runs locally on your Mac, no API cost. Supports Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati, Kannada, Malayalam, Odia, Punjabi and Assamese. The first preview loads the model, so it takes about 30 seconds.</div>
+                </div>
+
+                <audio id="voice-preview-player" hidden></audio>
+                <div class="preview-panel" id="voice-preview-panel" hidden>
+                  <div class="preview-head">
+                    <span class="preview-icon"><i data-lucide="volume-2"></i></span>
+                    <div class="preview-meta">
+                      <strong id="preview-voice-name">—</strong>
+                      <span id="preview-status">Choose a language to hear a sample</span>
+                    </div>
+                    <button class="icon-btn" id="preview-close" title="Close preview" aria-label="Close preview"><i data-lucide="x"></i></button>
+                  </div>
+                  <div class="chip-row preview-langs" id="preview-langs"></div>
+                  <div class="notice warn preview-mismatch" id="preview-mismatch" hidden>
+                    <i data-lucide="triangle-alert"></i>
+                    <span id="preview-mismatch-text"></span>
+                  </div>
+                  <audio id="preview-audio" controls></audio>
+                </div>
+              </div>
+            </div>
+
+            <aside class="create-side">
+              <div class="card summary-card">
+                <div class="card-head">
+                  <span class="card-icon"><i data-lucide="list-checks"></i></span>
+                  <div>
+                    <h2>Recipe</h2>
+                    <p class="card-sub">What will be generated.</p>
+                  </div>
+                </div>
+                <dl class="summary-list" id="summary-list"></dl>
+                <button class="btn-secondary full" id="summary-advanced-btn">
+                  <i data-lucide="sliders-horizontal"></i> Advanced settings
+                </button>
+              </div>
+
+              <div class="card" id="progress-card" hidden>
+                <div class="card-head">
+                  <span class="card-icon spinning"><i data-lucide="loader-circle"></i></span>
+                  <div>
+                    <h2>Generating</h2>
+                    <p class="card-sub" id="progress-label">Starting...</p>
+                  </div>
+                </div>
+                <div class="progress-bar-track">
+                  <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
+                </div>
+                <div class="progress-percent" id="progress-percent">0%</div>
+                <div class="error-banner" id="progress-error" hidden></div>
+                <ol class="step-list" id="step-list">
+                  <li data-step="plan"><span class="step-dot"></span> Planning scenes</li>
+                  <li data-step="scene"><span class="step-dot"></span> Images &amp; voice-over</li>
+                  <li data-step="stitch"><span class="step-dot"></span> Stitching video</li>
+                  <li data-step="captions"><span class="step-dot"></span> Burning captions</li>
+                </ol>
+                <details class="log-details">
+                  <summary>Show detailed log</summary>
+                  <pre class="log" id="progress-log"></pre>
+                </details>
+              </div>
+
+              <div class="card" id="result-card" hidden>
+                <div class="card-head">
+                  <span class="card-icon success"><i data-lucide="circle-check"></i></span>
+                  <div>
+                    <h2>Your video</h2>
+                    <p class="card-sub">Ready to download and upload.</p>
+                  </div>
+                </div>
+                <video id="result-video" controls></video>
+                <div class="output-actions">
+                  <a class="btn-secondary" id="result-download" download><i data-lucide="download"></i> Download</a>
+                  <button class="btn-ghost" id="result-goto-outputs"><i data-lucide="library"></i> All outputs</button>
+                </div>
+              </div>
+            </aside>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= OUTPUTS ================= -->
+      <section class="tab hidden" id="tab-outputs">
+        <header class="page-header">
+          <div class="page-title-wrap">
+            <span class="page-icon"><i data-lucide="library"></i></span>
+            <div>
+              <h1>Outputs</h1>
+              <p class="page-subtitle">Every video you've generated, with details and quick actions.</p>
+            </div>
+          </div>
+          <div class="page-header-actions">
+            <button class="btn-ghost" id="outputs-refresh-btn"><i data-lucide="refresh-cw"></i> Refresh</button>
+          </div>
+        </header>
+
+        <div class="page-body">
+          <div class="stat-row" id="outputs-stats"></div>
+
+          <div class="toolbar">
+            <div class="search-box">
+              <i data-lucide="search"></i>
+              <input type="text" id="outputs-search" placeholder="Search by name or description..." />
+            </div>
+            <select id="outputs-sort">
+              <option value="recent">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="name">Name A–Z</option>
+              <option value="longest">Longest first</option>
+            </select>
+          </div>
+
+          <div class="skeleton-grid hidden" id="outputs-skeleton">
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+          </div>
+
+          <div id="outputs-list" class="outputs-grid"></div>
+        </div>
+      </section>
+
+      <!-- ================= PROMPTS ================= -->
+      <section class="tab hidden" id="tab-prompts">
+        <header class="page-header">
+          <div class="page-title-wrap">
+            <span class="page-icon"><i data-lucide="file-text"></i></span>
+            <div>
+              <h1>Prompt templates</h1>
+              <p class="page-subtitle">Control how stories get turned into scenes. Every save keeps a version.</p>
+            </div>
+          </div>
+          <div class="page-header-actions">
+            <button class="btn-ghost" id="prompt-new-category-btn"><i data-lucide="plus"></i> New category</button>
+          </div>
+        </header>
+
+        <div class="page-body">
+          <div class="skeleton-stack hidden" id="prompts-skeleton">
+            <div class="skeleton-line wide"></div>
+            <div class="skeleton-block"></div>
+          </div>
+
+          <div class="prompts-layout" id="prompts-layout">
+            <div class="create-main">
+              <div class="card">
+                <div class="card-head">
+                  <span class="card-icon"><i data-lucide="folder-tree"></i></span>
+                  <div>
+                    <h2>Template</h2>
+                    <p class="card-sub">Click a placeholder to insert it at your cursor.</p>
+                  </div>
+                </div>
+                <div class="field-row">
+                  <label>Category</label>
+                  <select id="prompt-category"></select>
+                </div>
+                <div class="chip-row" id="placeholder-chips">
+                  <button type="button" class="chip mono" data-insert="{{STYLE}}">{{STYLE}}</button>
+                  <button type="button" class="chip mono" data-insert="{{LANGUAGE}}">{{LANGUAGE}}</button>
+                  <button type="button" class="chip mono" data-insert="{{STORY_TEXT}}">{{STORY_TEXT}}</button>
+                </div>
+                <div class="field-row">
+                  <div class="label-row">
+                    <label>Prompt body</label>
+                    <span class="counter" id="prompt-counter">0 characters</span>
+                  </div>
+                  <textarea id="prompt-text" rows="20"></textarea>
+                </div>
+              </div>
+            </div>
+
+            <aside class="create-side">
+              <div class="card">
+                <div class="card-head">
+                  <span class="card-icon"><i data-lucide="history"></i></span>
+                  <div>
+                    <h2>Version history</h2>
+                    <p class="card-sub">Restore any earlier version.</p>
+                  </div>
+                </div>
+                <ul class="version-list" id="prompt-versions"></ul>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= SETTINGS ================= -->
+      <section class="tab hidden" id="tab-settings">
+        <header class="page-header">
+          <div class="page-title-wrap">
+            <span class="page-icon"><i data-lucide="settings"></i></span>
+            <div>
+              <h1>Settings</h1>
+              <p class="page-subtitle">API keys and defaults. Saved to .env and applied immediately — no restart.</p>
+            </div>
+          </div>
+        </header>
+
+        <div class="page-body">
+          <div class="skeleton-stack hidden" id="settings-skeleton">
+            <div class="skeleton-block"></div>
+            <div class="skeleton-block"></div>
+          </div>
+          <div class="settings-layout" id="settings-groups"></div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ================= ADVANCED DRAWER ================= -->
+  <div class="drawer-overlay hidden" id="advanced-overlay"></div>
+  <aside class="drawer hidden" id="advanced-drawer">
+    <div class="drawer-header">
+      <div class="page-title-wrap">
+        <span class="page-icon small"><i data-lucide="sliders-horizontal"></i></span>
+        <div>
+          <h2>Advanced settings</h2>
+          <p class="page-subtitle">Fine-tune the render. Defaults work well.</p>
+        </div>
+      </div>
+      <button class="icon-btn" id="close-advanced-btn" title="Close"><i data-lucide="x"></i></button>
+    </div>
+
+    <div class="drawer-body">
+      <div class="card">
+        <div class="card-head">
+          <span class="card-icon"><i data-lucide="audio-lines"></i></span>
+          <div>
+            <h2>Voice fine-tuning</h2>
+            <p class="card-sub">Speed and tone of the narration.</p>
+          </div>
+        </div>
+        <div id="edge-advanced-fields">
+          <div class="field-row">
+            <div class="label-row"><label>Speaking rate</label><span class="counter" id="voice-rate-out">+0%</span></div>
+            <input type="range" id="opt-voice-rate-range" min="-50" max="50" step="5" value="0" />
+          </div>
+          <div class="field-row">
+            <div class="label-row"><label>Pitch</label><span class="counter" id="voice-pitch-out">+0Hz</span></div>
+            <input type="range" id="opt-voice-pitch-range" min="-50" max="50" step="5" value="0" />
+          </div>
+          <input id="opt-voice-rate" type="hidden" value="+0%" />
+          <input id="opt-voice-pitch" type="hidden" value="+0Hz" />
+        </div>
+        <div id="sarvam-advanced-fields" hidden>
+          <div class="field-row">
+            <div class="label-row"><label>Pace</label><span class="counter" id="sarvam-pace-out">0.90×</span></div>
+            <input type="range" id="opt-sarvam-pace" min="0.5" max="2" step="0.05" value="0.9" />
+          </div>
+          <div class="field-row">
+            <div class="label-row"><label>Expressiveness</label><span class="counter" id="sarvam-temp-out">0.90</span></div>
+            <input type="range" id="opt-sarvam-temperature" min="0.05" max="1" step="0.05" value="0.9" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="card-icon"><i data-lucide="monitor-play"></i></span>
+          <div>
+            <h2>Video</h2>
+            <p class="card-sub">Frame size and pacing between scenes.</p>
+          </div>
+        </div>
+        <div class="field-row">
+          <label>Resolution</label>
+          <select id="opt-size">
+            <option value="1920x1080">1920 × 1080 — Full HD landscape</option>
+            <option value="1280x720">1280 × 720 — HD landscape (faster)</option>
+            <option value="2560x1440">2560 × 1440 — 2K landscape</option>
+            <option value="1080x1920">1080 × 1920 — Vertical (Shorts / Reels)</option>
+            <option value="1080x1080">1080 × 1080 — Square</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <div class="label-row"><label>Crossfade between scenes</label><span class="counter" id="transition-out">0.6s</span></div>
+          <input type="range" id="opt-transition" min="0" max="2" step="0.1" value="0.6" />
+        </div>
+        <div class="field-row">
+          <div class="label-row"><label>Pause after each scene</label><span class="counter" id="scene-pause-out">0.6s</span></div>
+          <input type="range" id="opt-scene-pause" min="0" max="2" step="0.1" value="0.6" />
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="card-icon"><i data-lucide="music"></i></span>
+          <div>
+            <h2>Background audio</h2>
+            <p class="card-sub">Ambience and music sit under the narration.</p>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="label-row"><label>Wind ambience</label><span class="counter" id="ambience-out">10%</span></div>
+          <input type="range" id="opt-ambience-volume" min="0" max="0.5" step="0.01" value="0.1" />
+        </div>
+        <div class="field-row">
+          <div class="label-row"><label>Music volume</label><span class="counter" id="music-out">Off</span></div>
+          <input type="range" id="opt-music-volume" min="0" max="0.5" step="0.01" value="0" />
+        </div>
+        <div class="field-row">
+          <label>Music track</label>
+          <div class="music-browser" id="music-browser"></div>
+          <select id="opt-music-preset" class="visually-hidden"><option value="">No music track</option></select>
+          <button class="btn-secondary full" id="music-upload-btn"><i data-lucide="upload"></i> Upload your own track</button>
+          <input type="file" id="music-upload-input" accept="audio/*" hidden />
+          <audio id="music-preview" hidden></audio>
+          <div class="help-text">Click a track to select it, press play to hear it. Uploaded tracks are saved and reusable.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="card-icon"><i data-lucide="database"></i></span>
+          <div>
+            <h2>Caching</h2>
+            <p class="card-sub">Reuse saved work to avoid burning API credits.</p>
+          </div>
+        </div>
+        <label class="switch-row">
+          <span>
+            <strong>Re-plan scenes</strong>
+            <small>Ignore the cached scenes.json and ask Gemini again.</small>
+          </span>
+          <input id="opt-force-replan" type="checkbox" class="switch" />
+        </label>
+        <label class="switch-row">
+          <span>
+            <strong>Regenerate images</strong>
+            <small>Ignore cached scene images and draw them all again.</small>
+          </span>
+          <input id="opt-force-images" type="checkbox" class="switch" />
+        </label>
+      </div>
+    </div>
+
+    <div class="drawer-footer">
+      <button class="btn-ghost" id="advanced-reset-btn"><i data-lucide="rotate-ccw"></i> Reset defaults</button>
+      <button class="btn-primary" id="advanced-done-btn">Done</button>
+    </div>
+  </aside>
+
+  <!-- ================= SAVE BAR ================= -->
+  <div class="save-bar hidden" id="save-bar">
+    <span class="save-bar-text"><span class="pulse-dot"></span> You have unsaved changes</span>
+    <button class="btn-ghost" id="discard-btn">Discard</button>
+    <button class="btn-primary" id="save-btn"><i data-lucide="save"></i> Save changes</button>
+  </div>
+
+  <div class="modal-overlay hidden" id="review-overlay"></div>
+  <div class="modal hidden" id="review-modal" role="dialog" aria-modal="true" aria-labelledby="review-title">
+    <div class="modal-header">
+      <div class="page-title-wrap">
+        <span class="page-icon small"><i data-lucide="clipboard-check"></i></span>
+        <div>
+          <h2 id="review-title">Review before generating</h2>
+          <p class="page-subtitle">Check everything is right — you can still go back and change it.</p>
+        </div>
+      </div>
+      <button class="icon-btn" id="review-close" title="Close" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+
+    <div class="modal-body">
+      <div class="review-warnings" id="review-warnings"></div>
+      <div class="review-groups" id="review-groups"></div>
+      <div class="review-estimate" id="review-estimate"></div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-ghost" id="review-back"><i data-lucide="pencil"></i> Back to edit</button>
+      <button class="btn-primary" id="review-start"><i data-lucide="wand-sparkles"></i> Start generation</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="remix-overlay"></div>
+  <div class="modal hidden" id="remix-modal" role="dialog" aria-modal="true" aria-labelledby="remix-title">
+    <div class="modal-header">
+      <div class="page-title-wrap">
+        <span class="page-icon small"><i data-lucide="music"></i></span>
+        <div>
+          <h2 id="remix-title">Change background music</h2>
+          <p class="page-subtitle" id="remix-story">—</p>
+        </div>
+      </div>
+      <button class="icon-btn" id="remix-close" title="Close" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+
+    <div class="modal-body">
+      <div class="notice info">
+        <i data-lucide="info"></i>
+        <span>Images and voice-over are reused, so this only takes a minute. The video is replaced when it finishes.</span>
+      </div>
+
+      <div class="field-row">
+        <label>Music track</label>
+        <div class="music-browser" id="remix-music-browser"></div>
+      </div>
+
+      <div class="field-row">
+        <div class="label-row"><label>Music volume</label><span class="counter" id="remix-music-out">16%</span></div>
+        <input type="range" id="remix-music-volume" min="0" max="0.5" step="0.01" value="0.16" />
+      </div>
+
+      <div class="field-row">
+        <div class="label-row"><label>Wind ambience</label><span class="counter" id="remix-ambience-out">5%</span></div>
+        <input type="range" id="remix-ambience-volume" min="0" max="0.5" step="0.01" value="0.05" />
+      </div>
+
+      <div class="progress-bar-track" id="remix-progress-track" hidden>
+        <div class="progress-bar-fill" id="remix-progress-fill" style="width:0%"></div>
+      </div>
+      <div class="help-text" id="remix-status" hidden></div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-ghost" id="remix-cancel">Cancel</button>
+      <button class="btn-primary" id="remix-start"><i data-lucide="refresh-cw"></i> Re-render with this music</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="confirm-overlay"></div>
+  <div class="modal small hidden" id="confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+    <div class="modal-header">
+      <div class="page-title-wrap">
+        <span class="page-icon small danger" id="confirm-icon"><i data-lucide="triangle-alert"></i></span>
+        <div>
+          <h2 id="confirm-title">Are you sure?</h2>
+          <p class="page-subtitle" id="confirm-message">—</p>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" id="confirm-cancel">Cancel</button>
+      <button class="btn-danger" id="confirm-accept">Delete</button>
+    </div>
+  </div>
+
+  <div class="lightbox hidden" id="lightbox">
+    <button class="lightbox-close" id="lightbox-close" aria-label="Close"><i data-lucide="x"></i></button>
+    <button class="lightbox-nav prev" id="lightbox-prev" aria-label="Previous"><i data-lucide="chevron-left"></i></button>
+    <figure class="lightbox-figure">
+      <img id="lightbox-image" alt="Scene image" />
+      <figcaption id="lightbox-caption">1 / 1</figcaption>
+    </figure>
+    <button class="lightbox-nav next" id="lightbox-next" aria-label="Next"><i data-lucide="chevron-right"></i></button>
+  </div>
+
+  <div class="toast-stack" id="toast-stack"></div>
+
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

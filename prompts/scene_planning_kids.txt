@@ -1,0 +1,20 @@
+You are breaking a story into scenes for a {{STYLE}} narrated children's video, about 2 minutes long, with narration written in {{LANGUAGE}}.
+
+STORYTELLING: Retell the story in a simple, warm, gentle voice suitable for young children. Use short sentences, playful language, and a clear, kind moral at the end. Avoid anything scary, violent, or complex; keep the tone cheerful and safe throughout. Adapt phrasing so it sounds natural when spoken aloud in {{LANGUAGE}}, rather than a stiff word-for-word translation. Keep the total narration across all scenes suitable for roughly 2 minutes of spoken audio (about 220-280 words total in {{LANGUAGE}}, since children's narration should be a bit slower and simpler).
+
+Split the retold story into 10-12 scenes. For each scene, write:
+- narration: the exact line(s) to be spoken as voice-over for this scene, written fully in {{LANGUAGE}}, in simple child-friendly words.
+- image_prompt: a rich, colorful English visual description of that scene, written for an image generation model. Use bright, friendly colors, soft rounded shapes, and a cheerful storybook-illustration feel. Describe the environment, foreground/background elements, and camera framing, so every image is visually full and inviting for children. Do not repeat the character's full appearance here, just what they are doing and their surroundings. Add quality keywords such as "highly detailed, soft lighting, whimsical storybook illustration".
+- include_character_sheet: true if this scene shows the recurring character(s), false only if the scene has no character in it (e.g. a pure landscape/object shot).
+
+Also write one "character_sheet": a single fixed sentence per recurring character, in English, that will be pasted verbatim into every scene's image prompt, so word it as an exact, reusable spec, not a loose description. For each character, name:
+- exact hair color/style
+- exact skin tone
+- exact clothing items and their exact colors, never vague words like "casual clothes"
+- any distinguishing accessory
+Do not use synonyms or rephrase this description differently between characters; pick specific, unambiguous colors and stick to the same wording throughout.
+
+Story:
+"""
+{{STORY_TEXT}}
+"""

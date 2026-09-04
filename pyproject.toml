@@ -1,0 +1,46 @@
+[project]
+name = "storytube"
+version = "0.1.0"
+description = "AI pipeline: story -> images -> captions -> voice-over -> video"
+requires-python = ">=3.10"
+dependencies = [
+    "google-genai>=0.3.0",
+    "huggingface_hub>=0.26.0",
+    "python-dotenv>=1.0.0",
+    "pillow>=10.0.0",
+    "edge-tts>=6.1.0",
+    "requests>=2.31.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+# Local FLUX.1-schnell image generation on Apple Silicon.
+local-images = [
+    "mflux>=0.19",
+]
+# IndicF5 local TTS. This CANNOT share an environment with mflux: IndicF5 needs
+# transformers<4.50 (4.50+ builds models on a meta device, breaking its custom __init__)
+# and numpy<=1.26.4, while mflux needs transformers 5 and numpy 2. It therefore runs in
+# .venv-indicf5 via scripts/indicf5_worker.py. Create that environment with:
+#   python3.14 -m venv .venv-indicf5
+#   .venv-indicf5/bin/pip install "git+https://github.com/ai4bharat/IndicF5.git" \
+#       "transformers<4.50" "numpy<=1.26.4" soundfile
+indicf5 = [
+    "f5-tts @ git+https://github.com/ai4bharat/IndicF5.git",
+    "transformers<4.50",
+    "numpy<=1.26.4",
+    "soundfile>=0.12",
+]
+
+[project.scripts]
+storytube = "storytube.cli:main"
+storytube-web = "storytube.web.server:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,1869 @@
+const state = {
+  config: [],
+  categories: [],
+  activeTab: "story",
+  outputs: [],
+  stories: [],
+  lightboxImages: [],
+  lightboxIndex: 0,
+  playingTrack: "",
+  musicToken: 0,
+  remixTarget: null,
+  remixTrack: "",
+  imageProvider: "local",
+  promptCategory: null,
+  promptBaseline: "",
+  settingsBaseline: {},
+  dirty: false,
+};
+
+const STYLE_PRESETS = [
+  { label: "Anime / Manga", value: "anime/manga style" },
+  { label: "Realistic Historical", value: "realistic historical illustration, 7th century Arabian setting, warm earthy tones, cinematic historical drama, painterly realism" },
+  { label: "Watercolor Storybook", value: "soft watercolor storybook illustration, gentle colors, hand-painted texture" },
+  { label: "3D Pixar-style", value: "3D animated, Pixar-like rendering, soft global illumination, expressive characters" },
+  { label: "Cinematic Realistic", value: "cinematic realistic photography style, dramatic lighting, shallow depth of field" },
+  { label: "Cyberpunk", value: "cyberpunk digital art, neon lighting, futuristic cityscape, high contrast" },
+  { label: "Oil Painting", value: "classical oil painting, rich brush strokes, museum lighting, renaissance palette" },
+  { label: "Comic Book", value: "bold comic book art, heavy ink outlines, halftone shading, dynamic angles" },
+  { label: "Minimal Vector", value: "flat minimal vector illustration, limited palette, clean geometric shapes" },
+];
+
+const SETTINGS_GROUP_META = {
+  "Story & Scene Planning": { icon: "layers", description: "Turns your story text into scenes: narration lines plus image prompts." },
+  "Images": { icon: "image", description: "Which service draws each scene, and which model it uses." },
+  "Voice-over": { icon: "mic", description: "Text-to-speech engine used to narrate your story." },
+  "Advanced": { icon: "sliders-horizontal", description: "Low-level paths. Most people never need to touch these." },
+};
+
+const LANGUAGE_VOICE = {
+  English: "en-US-AriaNeural",
+  Hindi: "hi-IN-SwaraNeural",
+  Hinglish: "hi-IN-SwaraNeural",
+  Urdu: "ur-PK-UzmaNeural",
+  Arabic: "ar-SA-ZariyahNeural",
+  Bengali: "bn-IN-TanishaaNeural",
+  Tamil: "ta-IN-PallaviNeural",
+  Telugu: "te-IN-ShrutiNeural",
+  Spanish: "es-ES-ElviraNeural",
+  French: "fr-FR-DeniseNeural",
+};
+
+const ADVANCED_DEFAULTS = {
+  "opt-voice-rate-range": 0,
+  "opt-voice-pitch-range": 0,
+  "opt-sarvam-pace": 0.9,
+  "opt-sarvam-temperature": 0.9,
+  "opt-size": "1920x1080",
+  "opt-transition": 0.6,
+  "opt-scene-pause": 0.6,
+  "opt-ambience-volume": 0.1,
+  "opt-music-volume": 0,
+  "opt-music-preset": "",
+};
+
+function $(id) { return document.getElementById(id); }
+
+function icon(name, size) {
+  const s = size || 16;
+  return `<i data-lucide="${name}" style="width:${s}px;height:${s}px"></i>`;
+}
+
+function refreshIcons() {
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function formatDuration(seconds) {
+  if (seconds === null || seconds === undefined) return "—";
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function formatDate(value) {
+  if (!value) return "";
+  const date = typeof value === "number" ? new Date(value * 1000) : new Date(value);
+  if (isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function titleCase(name) {
+  return name.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function toast(message, kind) {
+  const el = document.createElement("div");
+  el.className = kind === "error" ? "toast error" : "toast";
+  el.innerHTML = `${icon(kind === "error" ? "circle-alert" : "circle-check", 16)}<span>${message}</span>`;
+  $("toast-stack").appendChild(el);
+  refreshIcons();
+  setTimeout(() => el.remove(), 3200);
+}
+
+/* ---------------- Confirm dialog ---------------- */
+
+let confirmResolver = null;
+
+function closeConfirm(result) {
+  $("confirm-overlay").classList.add("hidden");
+  $("confirm-modal").classList.add("hidden");
+  const resolve = confirmResolver;
+  confirmResolver = null;
+  if (resolve) resolve(result);
+}
+
+function confirmAction({ title, message, confirmLabel }) {
+  if (confirmResolver) closeConfirm(false);
+  $("confirm-title").textContent = title;
+  $("confirm-message").textContent = message;
+  $("confirm-accept").textContent = confirmLabel || "Confirm";
+  $("confirm-overlay").classList.remove("hidden");
+  $("confirm-modal").classList.remove("hidden");
+  refreshIcons();
+  $("confirm-accept").focus();
+  return new Promise((resolve) => {
+    confirmResolver = resolve;
+  });
+}
+
+function setupConfirm() {
+  $("confirm-accept").addEventListener("click", () => closeConfirm(true));
+  $("confirm-cancel").addEventListener("click", () => closeConfirm(false));
+  $("confirm-overlay").addEventListener("click", () => closeConfirm(false));
+}
+
+/* ---------------- Custom select ---------------- */
+
+function enhanceSelect(select) {
+  if (select.dataset.enhanced) {
+    renderSelect(select);
+    return;
+  }
+  select.dataset.enhanced = "1";
+
+  const wrap = document.createElement("div");
+  wrap.className = "select-wrap";
+  select.parentNode.insertBefore(wrap, select);
+  wrap.appendChild(select);
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "select-button";
+  button.setAttribute("aria-expanded", "false");
+  button.innerHTML = `<span class="select-value"></span>${icon("chevron-down", 15)}`;
+  button.querySelector("svg, i").classList.add("chevron");
+
+  const panel = document.createElement("div");
+  panel.className = "select-panel hidden";
+
+  wrap.appendChild(button);
+  wrap.appendChild(panel);
+
+  button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isOpen = !panel.classList.contains("hidden");
+    closeAllSelects();
+    if (!isOpen) {
+      panel.classList.remove("hidden");
+      button.setAttribute("aria-expanded", "true");
+      const active = panel.querySelector(".selected");
+      if (active) active.scrollIntoView({ block: "nearest" });
+    }
+  });
+
+  new MutationObserver(() => renderSelect(select)).observe(select, { childList: true });
+  renderSelect(select);
+}
+
+function renderSelect(select) {
+  const wrap = select.closest(".select-wrap");
+  if (!wrap) return;
+  const button = wrap.querySelector(".select-button");
+  const panel = wrap.querySelector(".select-panel");
+  const selected = select.options[select.selectedIndex];
+
+  button.querySelector(".select-value").textContent = selected ? selected.textContent : "";
+
+  panel.innerHTML = "";
+  Array.from(select.options).forEach((option) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = option.selected ? "select-option selected" : "select-option";
+    item.innerHTML = `<span>${option.textContent}</span>${option.selected ? icon("check", 14) : ""}`;
+    item.addEventListener("click", (e) => {
+      e.stopPropagation();
+      select.value = option.value;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      closeAllSelects();
+      renderSelect(select);
+    });
+    panel.appendChild(item);
+  });
+
+  const chevron = button.querySelector(".chevron");
+  if (!chevron) {
+    const svg = button.querySelector("svg");
+    if (svg) svg.classList.add("chevron");
+  }
+  refreshIcons();
+  const svg = button.querySelector("svg:last-of-type");
+  if (svg) svg.classList.add("chevron");
+}
+
+function closeAllSelects() {
+  document.querySelectorAll(".select-panel").forEach((p) => p.classList.add("hidden"));
+  document.querySelectorAll(".select-button").forEach((b) => b.setAttribute("aria-expanded", "false"));
+}
+
+function enhanceAllSelects(root) {
+  (root || document).querySelectorAll("select:not(.visually-hidden)").forEach(enhanceSelect);
+}
+
+document.addEventListener("click", closeAllSelects);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAllSelects(); });
+
+/* ---------------- Tabs ---------------- */
+
+const TABS = ["story", "prompts", "settings", "outputs"];
+
+function setupTabs() {
+  document.querySelectorAll(".nav-item").forEach((btn) => {
+    btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+  });
+  window.addEventListener("hashchange", () => {
+    const tab = location.hash.replace("#", "");
+    if (!TABS.includes(tab)) {
+      history.replaceState(null, "", `#${state.activeTab}`);
+      return;
+    }
+    if (tab !== state.activeTab) switchTab(tab);
+  });
+}
+
+function switchTab(tab) {
+  document.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll(".tab").forEach((t) => t.classList.add("hidden"));
+  $(`tab-${tab}`).classList.remove("hidden");
+  state.activeTab = tab;
+  if (location.hash !== `#${tab}`) history.replaceState(null, "", `#${tab}`);
+  setDirty(false);
+  if (tab === "settings") loadSettings();
+  if (tab === "prompts") loadPromptCategories();
+  if (tab === "outputs") loadOutputs();
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+
+/* ---------------- Save bar ---------------- */
+
+function setDirty(value) {
+  state.dirty = value;
+  $("save-bar").classList.toggle("hidden", !value);
+}
+
+function setupSaveBar() {
+  $("save-btn").addEventListener("click", async () => {
+    if (state.activeTab === "prompts") await savePromptVersion();
+    if (state.activeTab === "settings") await saveSettings();
+  });
+  $("discard-btn").addEventListener("click", () => {
+    if (state.activeTab === "prompts") loadPrompt(state.promptCategory);
+    if (state.activeTab === "settings") loadSettings();
+    setDirty(false);
+    toast("Changes discarded");
+  });
+}
+
+/* ---------------- Create page ---------------- */
+
+function setupProviderToggle() {
+  document.querySelectorAll("#tts-segmented .segment").forEach((seg) => {
+    seg.addEventListener("click", () => {
+      document.querySelectorAll("#tts-segmented .segment").forEach((s) => s.classList.remove("active"));
+      seg.classList.add("active");
+      const provider = seg.dataset.value;
+      $("opt-tts-provider").value = provider;
+
+      $("edge-fields").hidden = provider !== "edge";
+      $("sarvam-fields").hidden = provider !== "sarvam";
+      $("indicf5-fields").hidden = provider !== "indicf5";
+      $("edge-advanced-fields").hidden = provider !== "edge";
+      $("sarvam-advanced-fields").hidden = provider !== "sarvam";
+
+      previewRequestId += 1;
+      stopPreviewAudio();
+      $("voice-preview-panel").hidden = true;
+
+      updateSummary();
+    });
+  });
+}
+
+function setupAdvancedDrawer() {
+  const open = () => {
+    $("advanced-drawer").classList.remove("hidden");
+    $("advanced-overlay").classList.remove("hidden");
+  };
+  const close = () => {
+    $("advanced-drawer").classList.add("hidden");
+    $("advanced-overlay").classList.add("hidden");
+  };
+  $("open-advanced-btn").addEventListener("click", open);
+  $("summary-advanced-btn").addEventListener("click", open);
+  $("close-advanced-btn").addEventListener("click", close);
+  $("advanced-done-btn").addEventListener("click", close);
+  $("advanced-overlay").addEventListener("click", close);
+  $("advanced-reset-btn").addEventListener("click", () => {
+    Object.entries(ADVANCED_DEFAULTS).forEach(([id, value]) => {
+      const el = $(id);
+      if (!el) return;
+      el.value = value;
+      if (el.tagName === "SELECT") renderSelect(el);
+    });
+    $("opt-force-replan").checked = false;
+    $("opt-force-images").checked = false;
+    syncRangeOutputs();
+    updateSummary();
+    toast("Advanced settings reset to defaults");
+  });
+}
+
+function syncRangeOutputs() {
+  const rate = Number($("opt-voice-rate-range").value);
+  const pitch = Number($("opt-voice-pitch-range").value);
+  $("voice-rate-out").textContent = `${rate >= 0 ? "+" : ""}${rate}%`;
+  $("voice-pitch-out").textContent = `${pitch >= 0 ? "+" : ""}${pitch}Hz`;
+  $("opt-voice-rate").value = `${rate >= 0 ? "+" : ""}${rate}%`;
+  $("opt-voice-pitch").value = `${pitch >= 0 ? "+" : ""}${pitch}Hz`;
+
+  $("sarvam-pace-out").textContent = `${Number($("opt-sarvam-pace").value).toFixed(2)}×`;
+  $("sarvam-temp-out").textContent = Number($("opt-sarvam-temperature").value).toFixed(2);
+  $("transition-out").textContent = `${Number($("opt-transition").value).toFixed(1)}s`;
+  $("scene-pause-out").textContent = `${Number($("opt-scene-pause").value).toFixed(1)}s`;
+
+  const ambience = Number($("opt-ambience-volume").value);
+  const music = Number($("opt-music-volume").value);
+  $("ambience-out").textContent = ambience === 0 ? "Off" : `${Math.round(ambience * 100)}%`;
+  $("music-out").textContent = music === 0 ? "Off" : `${Math.round(music * 100)}%`;
+}
+
+function setupRanges() {
+  ["opt-voice-rate-range", "opt-voice-pitch-range", "opt-sarvam-pace", "opt-sarvam-temperature",
+   "opt-transition", "opt-scene-pause", "opt-ambience-volume", "opt-music-volume"].forEach((id) => {
+    $(id).addEventListener("input", () => { syncRangeOutputs(); updateSummary(); });
+  });
+  syncRangeOutputs();
+}
+
+function setupStylePresets() {
+  const row = $("style-presets");
+  STYLE_PRESETS.forEach((preset) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip";
+    chip.textContent = preset.label;
+    chip.addEventListener("click", () => {
+      $("opt-style").value = preset.value;
+      row.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+      chip.classList.add("active");
+      updateSummary();
+    });
+    row.appendChild(chip);
+  });
+  row.firstChild.classList.add("active");
+}
+
+function updateSummary() {
+  const provider = $("opt-tts-provider").value;
+  const musicPath = $("opt-music-preset").value;
+  const voiceLabel = {
+    sarvam: () => `Sarvam · ${$("opt-sarvam-speaker").value}`,
+    indicf5: () => `IndicF5 · ${$("opt-indicf5-voice").value}`,
+  }[provider]?.() ?? $("opt-voice").value;
+
+  const rows = [
+    ["Category", titleCase($("opt-category").value || "—")],
+    ["Language", $("opt-language").value],
+    ["Style", $("opt-style").value.split(",")[0]],
+    ["Voice", voiceLabel],
+    ["Resolution", $("opt-size").value],
+    ["Music", musicPath ? musicPath.split("/").pop() : "None"],
+  ];
+  $("summary-list").innerHTML = rows
+    .map(([k, v]) => `<div><dt>${k}</dt><dd title="${v}">${v}</dd></div>`)
+    .join("");
+
+  const words = $("story-text").value.trim().split(/\s+/).filter(Boolean).length;
+  $("story-counter").textContent = `${words} word${words === 1 ? "" : "s"}`;
+}
+
+function setupSummaryWatchers() {
+  ["opt-category", "opt-language", "opt-style", "opt-voice", "opt-sarvam-speaker",
+   "opt-indicf5-voice", "opt-size", "opt-music-preset", "story-text"].forEach((id) => {
+    $(id).addEventListener("input", updateSummary);
+    $(id).addEventListener("change", updateSummary);
+  });
+
+  $("opt-language").addEventListener("change", () => {
+    const match = LANGUAGE_VOICE[$("opt-language").value];
+    const voice = $("opt-voice");
+    if (!match || voice.value === match) return;
+    if (!Array.from(voice.options).some((o) => o.value === match)) return;
+    voice.value = match;
+    renderSelect(voice);
+    updateSummary();
+    toast(`Voice switched to ${match} to match ${$("opt-language").value}`);
+  });
+}
+
+/* ---------------- Data loading ---------------- */
+
+async function loadCategoriesIntoSelect(selectEl) {
+  const res = await fetch("/api/prompts");
+  const data = await res.json();
+  state.categories = data.categories;
+  const previous = selectEl.value;
+  selectEl.innerHTML = "";
+  data.categories.forEach((cat) => {
+    const opt = document.createElement("option");
+    opt.value = cat;
+    opt.textContent = titleCase(cat);
+    selectEl.appendChild(opt);
+  });
+  if (previous && data.categories.includes(previous)) selectEl.value = previous;
+  enhanceSelect(selectEl);
+}
+
+async function loadStoriesList() {
+  const res = await fetch("/api/stories");
+  const data = await res.json();
+  state.stories = data.stories;
+  const select = $("story-select");
+  select.innerHTML = '<option value="">New story</option>';
+  data.stories.forEach((name) => {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = titleCase(name);
+    select.appendChild(opt);
+  });
+  enhanceSelect(select);
+}
+
+function setupStorySelect() {
+  $("story-select").addEventListener("change", async (e) => {
+    if (!e.target.value) {
+      $("story-name").value = "";
+      $("story-text").value = "";
+      updateSummary();
+      return;
+    }
+    const r = await fetch(`/api/stories/${e.target.value}`);
+    const d = await r.json();
+    $("story-name").value = d.name;
+    $("story-text").value = d.text;
+    updateSummary();
+  });
+}
+
+async function loadMusicAssets(selectedPath) {
+  const res = await fetch("/api/assets");
+  const data = await res.json();
+  const select = $("opt-music-preset");
+  select.innerHTML = '<option value="">No music track</option>';
+  data.assets.forEach((filename) => {
+    const opt = document.createElement("option");
+    opt.value = `assets/${filename}`;
+    opt.textContent = filename.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
+    select.appendChild(opt);
+  });
+  if (selectedPath) select.value = selectedPath;
+  renderMusicBrowser(data.assets);
+  updateSummary();
+}
+
+function renderMusicBrowser(assets) {
+  const browser = $("music-browser");
+  const selected = $("opt-music-preset").value;
+  browser.innerHTML = "";
+
+  const entries = [{ path: "", label: "No music track" }].concat(
+    assets.map((f) => ({ path: `assets/${f}`, label: titleCase(f.replace(/\.[^.]+$/, "")) }))
+  );
+
+  entries.forEach(({ path, label }) => {
+    const item = document.createElement("div");
+    item.className = path === selected ? "music-item selected" : "music-item";
+
+    const play = document.createElement("button");
+    play.type = "button";
+    play.className = "music-play";
+    play.dataset.path = path;
+    play.disabled = !path;
+    play.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleMusicPlayback(path);
+    });
+
+    const name = document.createElement("span");
+    name.className = "music-name";
+    name.textContent = label;
+
+    item.appendChild(play);
+    item.appendChild(name);
+    if (path === selected) {
+      const check = document.createElement("span");
+      check.className = "music-check";
+      check.innerHTML = icon("check", 15);
+      item.appendChild(check);
+    }
+
+    item.addEventListener("click", () => {
+      $("opt-music-preset").value = path;
+      renderMusicBrowser(assets);
+      updateSummary();
+    });
+
+    browser.appendChild(item);
+  });
+  syncMusicIcons();
+}
+
+function musicPlayerEl() {
+  const el = $("music-preview");
+  if (!el.dataset.wired) {
+    el.dataset.wired = "1";
+    el.addEventListener("ended", () => setPlayingTrack(""));
+  }
+  return el;
+}
+
+function setPlayingTrack(path) {
+  state.playingTrack = path;
+  syncMusicIcons();
+}
+
+function syncMusicIcons() {
+  document.querySelectorAll(".music-play").forEach((btn) => {
+    const path = btn.dataset.path || "";
+    const playing = Boolean(path) && path === state.playingTrack;
+    const wanted = path ? (playing ? "pause" : "play") : "ban";
+    btn.classList.toggle("playing", playing);
+    btn.title = path ? (playing ? "Stop preview" : "Play preview") : "No track to preview";
+    btn.setAttribute("aria-label", btn.title);
+    if (btn.dataset.icon !== wanted) {
+      btn.dataset.icon = wanted;
+      btn.innerHTML = icon(wanted, 13);
+    }
+  });
+  refreshIcons();
+}
+
+function stopMusicPreview() {
+  state.musicToken += 1;
+  musicPlayerEl().pause();
+  setPlayingTrack("");
+}
+
+function toggleMusicPlayback(path) {
+  if (!path) return;
+  const el = musicPlayerEl();
+  if (state.playingTrack === path && !el.paused) {
+    stopMusicPreview();
+    return;
+  }
+  const token = ++state.musicToken;
+  el.pause();
+  el.src = `/${path}`;
+  el.play()
+    .then(() => {
+      if (token === state.musicToken) setPlayingTrack(path);
+    })
+    .catch(() => {
+      if (token !== state.musicToken) return;
+      setPlayingTrack("");
+      toast("Could not play that track", "error");
+    });
+}
+
+function setupMusicUpload() {
+  $("music-upload-btn").addEventListener("click", () => $("music-upload-input").click());
+  $("music-upload-input").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    $("music-upload-btn").innerHTML = `${icon("loader-circle", 14)} Uploading...`;
+    refreshIcons();
+    const res = await fetch("/api/assets/upload", { method: "POST", body: formData });
+    const data = await res.json();
+    $("music-upload-btn").innerHTML = `${icon("upload", 14)} Upload your own track`;
+    refreshIcons();
+    await loadMusicAssets(data.path);
+    toast("Music track uploaded");
+  });
+}
+
+const PREVIEW_LANGUAGES = ["English", "Hindi", "Urdu", "Arabic", "Bengali", "Tamil", "Telugu"];
+
+// An edge-tts voice only speaks its own locale; anything else returns no audio.
+const EDGE_LOCALE_LANGUAGE = {
+  en: "English",
+  hi: "Hindi",
+  ur: "Urdu",
+  ar: "Arabic",
+  bn: "Bengali",
+  ta: "Tamil",
+  te: "Telugu",
+  es: "Spanish",
+  fr: "French",
+};
+
+// Verified against the running services: these combinations return usable audio.
+const PROVIDER_LANGUAGES = {
+  sarvam: ["English", "Hindi", "Bengali", "Tamil", "Telugu"],
+  indicf5: ["Hindi", "Bengali", "Tamil", "Telugu"],
+};
+
+function previewLanguagesFor(provider) {
+  if (provider === "edge") {
+    const spoken = EDGE_LOCALE_LANGUAGE[currentVoiceFor("edge").split("-")[0]];
+    return spoken && spoken !== "English" ? [spoken, "English"] : ["English"];
+  }
+  return PROVIDER_LANGUAGES[provider] || PREVIEW_LANGUAGES;
+}
+
+let previewRequestId = 0;
+
+function stopPreviewAudio() {
+  const audio = $("preview-audio");
+  audio.pause();
+  audio.removeAttribute("src");
+  audio.load();
+}
+
+function currentVoiceFor(provider) {
+  return {
+    edge: () => $("opt-voice").value,
+    sarvam: () => $("opt-sarvam-speaker").value,
+    indicf5: () => $("opt-indicf5-voice").value,
+  }[provider]();
+}
+
+function voiceLabelFor(provider) {
+  const select = { edge: "opt-voice", sarvam: "opt-sarvam-speaker", indicf5: "opt-indicf5-voice" }[provider];
+  const el = $(select);
+  return el.options[el.selectedIndex]?.textContent || currentVoiceFor(provider);
+}
+
+function setupVoicePreview() {
+  $("preview-close").addEventListener("click", () => {
+    previewRequestId += 1;
+    stopPreviewAudio();
+    $("voice-preview-panel").hidden = true;
+  });
+
+  document.querySelectorAll(".preview-btn").forEach((btn) => {
+    btn.addEventListener("click", () => openVoicePreview(btn.dataset.preview));
+  });
+
+  // Changing the selected voice invalidates whatever sample is loaded.
+  ["opt-voice", "opt-sarvam-speaker", "opt-indicf5-voice"].forEach((id) => {
+    $(id).addEventListener("change", () => {
+      previewRequestId += 1;
+      stopPreviewAudio();
+      $("voice-preview-panel").hidden = true;
+    });
+  });
+}
+
+function openVoicePreview(provider) {
+  previewRequestId += 1;
+  stopPreviewAudio();
+
+  const panel = $("voice-preview-panel");
+  panel.hidden = false;
+  $("preview-voice-name").textContent = voiceLabelFor(provider);
+
+  // Only offer languages this voice can actually speak, narration language first.
+  const supported = previewLanguagesFor(provider);
+  const chosen = $("opt-language").value;
+  const langs = supported.includes(chosen)
+    ? [chosen, ...supported.filter((l) => l !== chosen)]
+    : supported.slice();
+
+  const row = $("preview-langs");
+  row.innerHTML = "";
+  langs.forEach((lang, i) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = i === 0 ? "chip active" : "chip";
+    chip.textContent = lang;
+    chip.addEventListener("click", () => {
+      row.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+      chip.classList.add("active");
+      playVoiceSample(provider, lang);
+    });
+    row.appendChild(chip);
+  });
+
+  $("preview-mismatch").hidden = supported.includes(chosen);
+  $("preview-mismatch-text").textContent =
+    `This voice cannot narrate ${chosen}. Pick a voice that speaks ${chosen}, or change the narration language.`;
+
+  playVoiceSample(provider, langs[0]);
+  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  refreshIcons();
+}
+
+async function playVoiceSample(provider, language) {
+  const voice = currentVoiceFor(provider);
+  const status = $("preview-status");
+
+  previewRequestId += 1;
+  const requestId = previewRequestId;
+  stopPreviewAudio();
+  status.textContent = `Generating a ${language} sample\u2026`;
+
+  try {
+    const res = await fetch("/api/voice-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, voice, language }),
+    });
+    if (requestId !== previewRequestId) return;
+    if (!res.ok) throw new Error(`This voice could not produce a ${language} sample.`);
+    const { url } = await res.json();
+    if (requestId !== previewRequestId) return;
+
+    const audio = $("preview-audio");
+    audio.src = url;
+    audio.play().catch(() => {});
+    status.textContent = `${language} sample \u00b7 ${voice}`;
+  } catch (err) {
+    if (requestId !== previewRequestId) return;
+    status.textContent = err.message;
+  }
+}
+
+/* ---------------- Generate ---------------- */
+
+function gatherGenerateOptions() {
+  return {
+    story_name: $("story-name").value.trim(),
+    story_text: $("story-text").value,
+    style: $("opt-style").value,
+    language: $("opt-language").value,
+    category: $("opt-category").value,
+    tts_provider: $("opt-tts-provider").value,
+    voice: $("opt-voice").value,
+    voice_rate: $("opt-voice-rate").value,
+    voice_pitch: $("opt-voice-pitch").value,
+    sarvam_speaker: $("opt-sarvam-speaker").value,
+    indicf5_voice: $("opt-indicf5-voice").value,
+    sarvam_pace: parseFloat($("opt-sarvam-pace").value),
+    sarvam_temperature: parseFloat($("opt-sarvam-temperature").value),
+    size: $("opt-size").value,
+    transition: parseFloat($("opt-transition").value),
+    scene_pause: parseFloat($("opt-scene-pause").value),
+    ambience_volume: parseFloat($("opt-ambience-volume").value),
+    music_volume: parseFloat($("opt-music-volume").value),
+    music_style: "arabic",
+    music_file: $("opt-music-preset").value || null,
+    force_replan: $("opt-force-replan").checked,
+    force_images: $("opt-force-images").checked,
+  };
+}
+
+function stagePercent(event) {
+  const fixed = {
+    plan: 4,
+    plan_done: 10,
+    captions: 82,
+    crossfade_video: 86,
+    crossfade_audio: 89,
+    mixing: 92,
+    muxing: 95,
+    burning: 98,
+    done: 100,
+  };
+  if (event.stage in fixed) return fixed[event.stage];
+  if (event.total && event.scene) {
+    const perScene = 70 / event.total;
+    const offsets = { image: 0.35, voice: 0.7, video_clip: 1 };
+    const within = offsets[event.stage] ?? 1;
+    return Math.min(80, Math.round(10 + (event.scene - 1 + within) * perScene));
+  }
+  return null;
+}
+
+const STAGE_TO_STEP = {
+  plan: "plan",
+  plan_done: "plan",
+  image: "scene",
+  voice: "scene",
+  video_clip: "scene",
+  captions: "stitch",
+  crossfade_video: "stitch",
+  crossfade_audio: "stitch",
+  mixing: "stitch",
+  muxing: "stitch",
+  burning: "captions",
+  done: "captions",
+};
+
+function setStep(stage) {
+  const order = ["plan", "scene", "stitch", "captions"];
+  const current = STAGE_TO_STEP[stage];
+  if (!current) return;
+  const currentIndex = order.indexOf(current);
+  order.forEach((step, i) => {
+    const li = document.querySelector(`#step-list li[data-step="${step}"]`);
+    li.classList.toggle("active", i === currentIndex);
+    li.classList.toggle("done", i < currentIndex);
+  });
+}
+
+function setupGenerate() {
+  $("result-goto-outputs").addEventListener("click", () => switchTab("outputs"));
+
+  $("generate-btn").addEventListener("click", () => {
+    if (!validateStoryForm()) return;
+    openReviewModal();
+  });
+
+  $("review-close").addEventListener("click", closeReviewModal);
+  $("review-back").addEventListener("click", closeReviewModal);
+  $("review-overlay").addEventListener("click", closeReviewModal);
+  $("review-start").addEventListener("click", () => {
+    closeReviewModal();
+    startGeneration();
+  });
+}
+
+function validateStoryForm() {
+  const name = $("story-name").value.trim();
+  const text = $("story-text").value.trim();
+  let valid = true;
+
+  setFieldError("story-name", !name ? "Give this story a name so its output folder can be found later." : "");
+  setFieldError("story-text", !text ? "Write or load a story before generating." : "");
+  if (!name || !text) valid = false;
+
+  if (valid && text.split(/\s+/).length < 15) {
+    setFieldError("story-text", "This is very short. Scene planning works best with at least a short paragraph.");
+  }
+  if (!valid) {
+    switchTab("story");
+    (!name ? $("story-name") : $("story-text")).focus();
+  }
+  return valid;
+}
+
+function setFieldError(fieldId, message) {
+  const field = $(fieldId);
+  const holder = $(`${fieldId}-error`);
+  if (!holder) return;
+  holder.hidden = !message;
+  holder.innerHTML = message ? `${icon("circle-alert", 13)} ${message}` : "";
+  field.classList.toggle("invalid", Boolean(message));
+  refreshIcons();
+}
+
+function reviewWarnings(opts) {
+  const warnings = [];
+  const configFor = (key) => state.config.find((f) => f.key === key);
+  const isSet = (key) => Boolean(configFor(key)?.is_set);
+
+  if (opts.tts_provider === "sarvam" && state.config.length && !isSet("SARVAM_API_KEY")) {
+    warnings.push(["danger", "Sarvam is selected but no Sarvam API key is saved. Add it in Settings first."]);
+  }
+  if (opts.tts_provider === "indicf5" && /urdu/i.test(opts.language)) {
+    warnings.push(["warn", "IndicF5 does not support Urdu. Use Hindi in Devanagari script, or switch to Sarvam."]);
+  }
+  if (opts.tts_provider === "edge") {
+    const expected = LANGUAGE_VOICE[opts.language];
+    if (expected && opts.voice.split("-")[0] !== expected.split("-")[0]) {
+      warnings.push(["danger", `Voice "${opts.voice}" cannot speak ${opts.language}. edge-tts will return no audio. Pick a matching voice.`]);
+    }
+  }
+  if (state.stories.includes(opts.story_name)) {
+    warnings.push(["warn", `An output named "${opts.story_name}" already exists. Cached scenes and images will be reused unless you enable the re-generate switches.`]);
+  }
+  if (/cinematic/i.test(opts.style)) {
+    warnings.push(["info", "The word \u201Ccinematic\u201D can make the image model add black letterbox bars. Remove it if you see them."]);
+  }
+  if (opts.music_volume > 0 && !opts.music_file) {
+    warnings.push(["warn", "Music volume is above zero but no music track is selected."]);
+  }
+  if (opts.music_file && opts.music_volume === 0) {
+    warnings.push(["warn", "A music track is selected but music volume is zero, so it will be silent."]);
+  }
+  return warnings;
+}
+
+function estimateMinutes(opts) {
+  // Gemini decides the real scene count, so this is a range, not a promise.
+  const words = opts.story_text.trim().split(/\s+/).filter(Boolean).length;
+  const scenes = Math.max(6, Math.min(14, Math.round(words / 18)));
+
+  const [w, h] = (opts.size || "1920x1080").split("x").map(Number);
+  const local = state.imageProvider === "local";
+  // Measured here: FLUX.1-schnell at 4 steps takes ~100s per 1080p image.
+  const perImage = local ? 100 * ((w * h) / (1920 * 1080)) : 10;
+  const perVoice = { indicf5: 20, sarvam: 3, edge: 2 }[opts.tts_provider] ?? 3;
+  const startup = local ? 60 : 10;
+  const seconds = startup + scenes * (perImage + perVoice + 5) + 45;
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return {
+    scenes,
+    low: minutes,
+    high: Math.round(minutes * 1.5),
+    imageShare: Math.round(((scenes * perImage) / seconds) * 100),
+    local,
+  };
+}
+
+function openReviewModal() {
+  const opts = gatherGenerateOptions();
+  const provider = opts.tts_provider;
+  const voice = { sarvam: opts.sarvam_speaker, indicf5: opts.indicf5_voice }[provider] ?? opts.voice;
+  const providerLabel = { edge: "edge-tts (free)", indicf5: "IndicF5 (local)", sarvam: "Sarvam (paid API)" }[provider];
+
+  const groups = [
+    ["Story", [
+      ["Name", opts.story_name],
+      ["Category", titleCase(opts.category)],
+      ["Language", opts.language],
+    ]],
+    ["Look", [
+      ["Style", opts.style],
+      ["Images", state.imageProvider === "local" ? "FLUX.1-schnell (local)" : state.imageProvider],
+      ["Resolution", opts.size],
+    ]],
+    ["Sound", [
+      ["Voice engine", providerLabel],
+      ["Voice", voice],
+      ["Music", opts.music_file ? `${opts.music_file.split("/").pop()} at ${Math.round(opts.music_volume * 100)}%` : "None"],
+      ["Ambience", opts.ambience_volume > 0 ? `${Math.round(opts.ambience_volume * 100)}%` : "Off"],
+    ]],
+    ["Rendering", [
+      ["Crossfade", `${opts.transition}s`],
+      ["Pause per scene", `${opts.scene_pause}s`],
+      ["Re-plan scenes", opts.force_replan ? "Yes" : "No, reuse cache"],
+      ["Re-generate images", opts.force_images ? "Yes" : "No, reuse cache"],
+    ]],
+  ];
+
+  $("review-groups").innerHTML = groups
+    .map(([title, rows]) => `
+      <div class="review-group">
+        <h3>${title}</h3>
+        <div class="review-rows">
+          ${rows.map(([k, v]) => `<div class="review-row"><dt>${k}</dt><dd>${v}</dd></div>`).join("")}
+        </div>
+      </div>`)
+    .join("") + `
+      <div class="review-group">
+        <h3>Story preview</h3>
+        <div class="review-story">${opts.story_text.trim().slice(0, 320)}${opts.story_text.length > 320 ? "\u2026" : ""}</div>
+      </div>`;
+
+  $("review-warnings").innerHTML = reviewWarnings(opts)
+    .map(([kind, text]) => `<div class="notice ${kind}">${icon(kind === "info" ? "info" : "triangle-alert", 15)}<span>${text}</span></div>`)
+    .join("");
+
+  const { scenes, low, high, imageShare, local } = estimateMinutes(opts);
+  const detail = local
+    ? `About ${imageShare}% of that is FLUX drawing images on your Mac, at roughly 1.5–2 minutes each.`
+    : "";
+  $("review-estimate").innerHTML =
+    `${icon("clock", 15)}<span>Around ${scenes} scenes, roughly ${low}–${high} minutes. ${detail} ` +
+    `You can keep using the other tabs while it runs.</span>`;
+
+  $("review-overlay").classList.remove("hidden");
+  $("review-modal").classList.remove("hidden");
+  refreshIcons();
+  $("review-start").focus();
+}
+
+function closeReviewModal() {
+  $("review-overlay").classList.add("hidden");
+  $("review-modal").classList.add("hidden");
+}
+
+async function startGeneration() {
+  const opts = gatherGenerateOptions();
+  {
+    $("generate-btn").disabled = true;
+    $("progress-card").hidden = false;
+    $("result-card").hidden = true;
+    $("progress-log").textContent = "";
+    $("progress-fill").style.width = "0%";
+    $("progress-fill").classList.remove("failed");
+    $("progress-percent").textContent = "0%";
+    $("progress-label").textContent = "Starting...";
+    $("progress-error").hidden = true;
+    const cardIcon = document.querySelector("#progress-card .card-icon");
+    cardIcon.classList.remove("danger");
+    cardIcon.classList.add("spinning");
+    cardIcon.innerHTML = icon("loader-circle", 17);
+    refreshIcons();
+    document.querySelectorAll("#step-list li").forEach((li) => li.classList.remove("active", "done"));
+    $("progress-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+    const res = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(opts),
+    });
+    const { job_id, story_name } = await res.json();
+    $("story-name").value = story_name;
+
+    const source = new EventSource(`/api/generate/${job_id}/stream`);
+    source.onmessage = (msg) => {
+      const event = JSON.parse(msg.data);
+      if (event.type === "progress") {
+        const percent = stagePercent(event);
+        $("progress-log").textContent += event.message + "\n";
+        $("progress-log").scrollTop = $("progress-log").scrollHeight;
+        $("progress-label").textContent = event.message;
+        if (percent !== null) {
+          $("progress-fill").style.width = percent + "%";
+          $("progress-percent").textContent = percent + "%";
+        }
+        setStep(event.stage);
+      } else if (event.type === "complete") {
+        $("progress-fill").style.width = "100%";
+        $("progress-percent").textContent = "100%";
+        $("progress-label").textContent = "Finished";
+        document.querySelectorAll("#step-list li").forEach((li) => {
+          li.classList.remove("active");
+          li.classList.add("done");
+        });
+        const url = `/output/${story_name}/final_video.mp4?t=${Date.now()}`;
+        $("result-card").hidden = false;
+        $("result-video").src = url;
+        $("result-download").href = `/api/outputs/${encodeURIComponent(story_name)}/download`;
+        $("result-download").download = `${story_name}.mp4`;
+        toast("Video ready");
+      } else if (event.type === "error") {
+        const cardIcon = document.querySelector("#progress-card .card-icon");
+        cardIcon.classList.remove("spinning");
+        cardIcon.classList.add("danger");
+        cardIcon.innerHTML = icon("circle-alert", 17);
+        $("progress-fill").classList.add("failed");
+        $("progress-label").textContent = "Generation failed";
+        $("progress-error").hidden = false;
+        $("progress-error").textContent = event.message;
+        $("progress-log").textContent += "\nERROR: " + event.message + "\n";
+        document.querySelector("#progress-card .log-details").open = true;
+        refreshIcons();
+        toast("Generation failed", "error");
+      } else if (event.type === "end") {
+        source.close();
+        $("generate-btn").disabled = false;
+        loadStoriesList();
+        loadOutputCount();
+      }
+    };
+    source.onerror = () => {
+      source.close();
+      $("generate-btn").disabled = false;
+      if ($("progress-percent").textContent !== "100%") {
+        $("progress-label").textContent = "Lost connection to the server";
+        $("progress-error").hidden = false;
+        $("progress-error").textContent =
+          "The progress stream disconnected. The job may still be running \u2014 check the Outputs tab in a few minutes.";
+        toast("Lost connection to the server", "error");
+      }
+    };
+  }
+}
+
+
+async function loadPromptCategories() {
+  $("prompts-skeleton").classList.remove("hidden");
+  $("prompts-layout").classList.add("hidden");
+  await loadCategoriesIntoSelect($("prompt-category"));
+  if (state.categories.length) {
+    await loadPrompt($("prompt-category").value);
+  }
+  $("prompts-skeleton").classList.add("hidden");
+  $("prompts-layout").classList.remove("hidden");
+}
+
+async function loadPrompt(category) {
+  if (!category) return;
+  state.promptCategory = category;
+  const res = await fetch(`/api/prompts/${category}`);
+  const data = await res.json();
+  $("prompt-text").value = data.text;
+  state.promptBaseline = data.text;
+  setDirty(false);
+  updatePromptCounter();
+
+  const list = $("prompt-versions");
+  list.innerHTML = "";
+  if (!data.versions.length) {
+    list.innerHTML = `<div class="empty-state">
+      <span class="empty-icon">${icon("history", 24)}</span>
+      <strong>No versions yet</strong>
+      <p>Edit the template and save — every save is archived here so you can roll back.</p>
+    </div>`;
+    refreshIcons();
+    return;
+  }
+  data.versions.forEach((v) => {
+    const li = document.createElement("li");
+    const span = document.createElement("span");
+    span.className = "preview";
+    span.innerHTML = `<strong>${v.id}</strong><span>${v.preview}</span>`;
+    const btn = document.createElement("button");
+    btn.className = "btn-secondary";
+    btn.innerHTML = `${icon("rotate-ccw", 13)} Restore`;
+    btn.addEventListener("click", async () => {
+      await fetch(`/api/prompts/${category}/restore/${v.id}`, { method: "POST" });
+      await loadPrompt(category);
+      toast("Version restored");
+    });
+    li.appendChild(span);
+    li.appendChild(btn);
+    list.appendChild(li);
+  });
+  refreshIcons();
+}
+
+function updatePromptCounter() {
+  $("prompt-counter").textContent = `${$("prompt-text").value.length} characters`;
+}
+
+async function savePromptVersion() {
+  const category = state.promptCategory;
+  if (!category) return;
+  await fetch(`/api/prompts/${category}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: $("prompt-text").value }),
+  });
+  await loadPrompt(category);
+  toast("Prompt template saved");
+}
+
+function setupPrompts() {
+  $("prompt-category").addEventListener("change", (e) => loadPrompt(e.target.value));
+
+  $("prompt-text").addEventListener("input", () => {
+    updatePromptCounter();
+    setDirty($("prompt-text").value !== state.promptBaseline);
+  });
+
+  document.querySelectorAll("#placeholder-chips .chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const area = $("prompt-text");
+      const start = area.selectionStart;
+      const text = chip.dataset.insert;
+      area.value = area.value.slice(0, start) + text + area.value.slice(area.selectionEnd);
+      area.focus();
+      area.selectionStart = area.selectionEnd = start + text.length;
+      updatePromptCounter();
+      setDirty(true);
+    });
+  });
+
+  $("prompt-new-category-btn").addEventListener("click", async () => {
+    const name = prompt("New category name (letters, numbers, dashes/underscores):");
+    if (!name) return;
+    const safe = name.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "_").replace(/^_|_$/g, "");
+    if (!safe) return;
+    await fetch(`/api/prompts/${safe}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: $("prompt-text").value || "" }),
+    });
+    await loadPromptCategories();
+    $("prompt-category").value = safe;
+    renderSelect($("prompt-category"));
+    await loadPrompt(safe);
+    await loadCategoriesIntoSelect($("opt-category"));
+    toast(`Category "${safe}" created`);
+  });
+}
+
+/* ---------------- Settings ---------------- */
+
+async function loadSettings() {
+  $("settings-skeleton").classList.remove("hidden");
+  $("settings-groups").classList.add("hidden");
+
+  const res = await fetch("/api/config");
+  const fields = await res.json();
+  state.config = fields;
+  state.imageProvider = fields.find((f) => f.key === "IMAGE_PROVIDER")?.value || "local";
+  state.settingsBaseline = {};
+
+  const groupsEl = $("settings-groups");
+  groupsEl.innerHTML = "";
+  const groups = {};
+  fields.forEach((f) => {
+    groups[f.group] = groups[f.group] || [];
+    groups[f.group].push(f);
+  });
+
+  Object.entries(groups).forEach(([groupName, groupFields]) => {
+    const meta = SETTINGS_GROUP_META[groupName] || { icon: "circle", description: "" };
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `<div class="card-head">
+        <span class="card-icon">${icon(meta.icon, 17)}</span>
+        <div><h2>${groupName}</h2><p class="card-sub">${meta.description}</p></div>
+      </div>`;
+
+    groupFields.forEach((f) => {
+      const wrap = document.createElement("div");
+      wrap.className = "settings-field";
+      wrap.dataset.key = f.key;
+      if (f.applies_when) wrap.dataset.appliesWhen = JSON.stringify(f.applies_when);
+
+      const labelRow = document.createElement("div");
+      labelRow.className = "settings-field-label-row";
+      labelRow.innerHTML =
+        `<label>${f.label}</label>` +
+        `<span class="field-flags">` +
+        `<span class="badge inactive inactive-badge" hidden>inactive</span>` +
+        `<span class="badge ${f.is_set ? "" : "unset"}">${f.is_set ? "saved" : "not set"}</span>` +
+        `</span>`;
+      wrap.appendChild(labelRow);
+
+      const control = buildSettingsInput(f);
+      control.classList.add("settings-field-control");
+      wrap.appendChild(control);
+
+      const help = document.createElement("div");
+      help.className = "help-text";
+      help.innerHTML = f.guidance_url
+        ? `${f.help} <a href="${f.guidance_url}" target="_blank" rel="noopener">${f.guidance}</a>`
+        : `${f.help} ${f.guidance}`;
+      wrap.appendChild(help);
+
+      card.appendChild(wrap);
+      state.settingsBaseline[f.key] = f.secret ? "" : (f.value || "");
+    });
+
+    groupsEl.appendChild(card);
+  });
+
+  enhanceAllSelects(groupsEl);
+  refreshIcons();
+  setDirty(false);
+  applySettingsRelevance();
+
+  groupsEl.addEventListener("input", checkSettingsDirty);
+  groupsEl.addEventListener("change", () => {
+    checkSettingsDirty();
+    applySettingsRelevance();
+  });
+
+  $("settings-skeleton").classList.add("hidden");
+  groupsEl.classList.remove("hidden");
+}
+
+function buildSettingsInput(field) {
+  if (field.type === "select") {
+    const select = document.createElement("select");
+    (field.options || []).forEach((opt) => {
+      const o = document.createElement("option");
+      o.value = opt;
+      o.textContent = opt;
+      if (opt === field.value) o.selected = true;
+      select.appendChild(o);
+    });
+    select.dataset.key = field.key;
+    return select;
+  }
+
+  if (field.type === "combo") {
+    const container = document.createElement("div");
+    const select = document.createElement("select");
+    const known = field.options || [];
+    known.forEach((opt) => {
+      const o = document.createElement("option");
+      o.value = opt.value;
+      o.textContent = opt.label;
+      select.appendChild(o);
+    });
+    const customOption = document.createElement("option");
+    customOption.value = "__custom__";
+    customOption.textContent = "Custom value...";
+    select.appendChild(customOption);
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "combo-custom";
+    input.dataset.key = field.key;
+    input.value = field.value || "";
+
+    const matches = known.some((o) => o.value === field.value);
+    select.value = matches ? field.value : "__custom__";
+    input.hidden = matches;
+
+    select.addEventListener("change", () => {
+      if (select.value === "__custom__") {
+        input.hidden = false;
+        input.focus();
+      } else {
+        input.hidden = true;
+        input.value = select.value;
+      }
+    });
+
+    container.appendChild(select);
+    container.appendChild(input);
+    return container;
+  }
+
+  if (field.type === "password") {
+    const container = document.createElement("div");
+
+    const input = document.createElement("input");
+    input.type = "password";
+    input.dataset.key = field.key;
+    input.placeholder = "Paste the new key here";
+
+    if (field.is_set) {
+      // Show that a key exists rather than an empty box, and only reveal the input on request.
+      const saved = document.createElement("div");
+      saved.className = "saved-value";
+      saved.innerHTML =
+        `<span class="saved-mask">${icon("key-round", 14)} ${field.value || "••••••••"}</span>` +
+        `<button type="button" class="btn-ghost replace-btn">Replace</button>`;
+      container.appendChild(saved);
+
+      input.hidden = true;
+      saved.querySelector(".replace-btn").addEventListener("click", () => {
+        saved.hidden = true;
+        input.hidden = false;
+        input.focus();
+      });
+    }
+
+    const wrap = document.createElement("div");
+    wrap.className = "password-wrap";
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "password-toggle";
+    toggle.innerHTML = icon("eye", 15);
+    toggle.addEventListener("click", () => {
+      const showing = input.type === "text";
+      input.type = showing ? "password" : "text";
+      toggle.innerHTML = icon(showing ? "eye" : "eye-off", 15);
+      refreshIcons();
+    });
+    wrap.appendChild(input);
+    wrap.appendChild(toggle);
+    if (field.is_set) wrap.hidden = true;
+
+    if (field.is_set) {
+      container.querySelector(".replace-btn").addEventListener("click", () => {
+        wrap.hidden = false;
+      });
+    }
+
+    container.appendChild(wrap);
+    return container;
+  }
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.dataset.key = field.key;
+  input.value = field.value || "";
+  return input;
+}
+
+function applySettingsRelevance() {
+  const current = collectSettingsValues();
+  document.querySelectorAll("#settings-groups .settings-field[data-applies-when]").forEach((field) => {
+    const rules = JSON.parse(field.dataset.appliesWhen);
+    const relevant = Object.entries(rules).every(([key, allowed]) => allowed.includes(current[key]));
+    field.classList.toggle("not-applicable", !relevant);
+    const badge = field.querySelector(".inactive-badge");
+    if (badge) badge.hidden = relevant;
+  });
+}
+
+function collectSettingsValues() {
+  const values = {};
+  document.querySelectorAll("#settings-groups [data-key]").forEach((input) => {
+    values[input.dataset.key] = input.value;
+  });
+  return values;
+}
+
+function checkSettingsDirty() {
+  const values = collectSettingsValues();
+  const changed = Object.entries(values).some(([key, value]) => {
+    const field = state.config.find((f) => f.key === key);
+    if (field && field.secret) return value !== "";
+    return value !== (state.settingsBaseline[key] || "");
+  });
+  setDirty(changed);
+}
+
+async function saveSettings() {
+  const values = {};
+  Object.entries(collectSettingsValues()).forEach(([key, value]) => {
+    const field = state.config.find((f) => f.key === key);
+    if (field && field.secret && value === "") return;
+    values[key] = value;
+  });
+  await fetch("/api/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ values }),
+  });
+  await loadSettings();
+  toast("Settings saved and applied");
+}
+
+
+async function loadOutputs() {
+  $("outputs-skeleton").classList.remove("hidden");
+  $("outputs-list").classList.add("hidden");
+
+  const res = await fetch("/api/outputs");
+  const data = await res.json();
+  state.outputs = data.outputs;
+  $("nav-outputs-count").textContent = data.outputs.length || "";
+
+  $("outputs-skeleton").classList.add("hidden");
+  $("outputs-list").classList.remove("hidden");
+  renderOutputStats();
+  renderOutputs();
+}
+
+function renderOutputStats() {
+  const total = state.outputs.length;
+  const seconds = state.outputs.reduce((sum, o) => sum + (o.duration_seconds || 0), 0);
+  const scenes = state.outputs.reduce((sum, o) => sum + (o.scene_count || 0), 0);
+  const stats = [
+    { icon: "film", value: total, label: total === 1 ? "video" : "videos" },
+    { icon: "clock", value: formatDuration(seconds), label: "total runtime" },
+    { icon: "images", value: scenes || "—", label: "scenes rendered" },
+  ];
+  $("outputs-stats").innerHTML = stats
+    .map((s) => `<div class="stat-card">
+        <span class="stat-icon">${icon(s.icon, 18)}</span>
+        <div><div class="stat-value">${s.value}</div><div class="stat-label">${s.label}</div></div>
+      </div>`)
+    .join("");
+  refreshIcons();
+}
+
+function renderOutputs() {
+  const query = $("outputs-search").value.trim().toLowerCase();
+  const sort = $("outputs-sort").value;
+  const grid = $("outputs-list");
+
+  let items = state.outputs.filter((o) =>
+    !query ||
+    o.name.toLowerCase().includes(query) ||
+    (o.description || "").toLowerCase().includes(query)
+  );
+
+  items = [...items].sort((a, b) => {
+    if (sort === "name") return a.name.localeCompare(b.name);
+    if (sort === "longest") return (b.duration_seconds || 0) - (a.duration_seconds || 0);
+    const at = new Date(a.created_at || 0).getTime() || a.modified_at || 0;
+    const bt = new Date(b.created_at || 0).getTime() || b.modified_at || 0;
+    return sort === "oldest" ? at - bt : bt - at;
+  });
+
+  grid.innerHTML = "";
+
+  if (!items.length) {
+    grid.innerHTML = state.outputs.length
+      ? `<div class="empty-state">
+          <span class="empty-icon">${icon("search-x", 24)}</span>
+          <strong>No matches</strong>
+          <p>Nothing here matches "${query}". Try a different search term.</p>
+        </div>`
+      : `<div class="empty-state">
+          <span class="empty-icon">${icon("clapperboard", 24)}</span>
+          <strong>No videos yet</strong>
+          <p>Generated videos show up here with their description, runtime and scene count.</p>
+          <button class="btn-primary" id="empty-create-btn">${icon("wand-sparkles", 14)} Create your first video</button>
+        </div>`;
+    refreshIcons();
+    const btn = $("empty-create-btn");
+    if (btn) btn.addEventListener("click", () => switchTab("story"));
+    return;
+  }
+
+  items.forEach((o) => {
+    const card = document.createElement("div");
+    card.className = "output-card";
+
+    const thumb = o.video_url
+      ? `<video controls preload="metadata" src="${o.video_url}"></video>`
+      : `<div class="output-thumb-empty">${icon("video-off", 22)}<span>No final video</span></div>`;
+
+    const badges = [o.category, o.language, o.voice].filter(Boolean)
+      .map((v) => `<span class="badge outline">${v}</span>`).join("");
+
+    const gallery = (o.images || []).length
+      ? `<div class="scene-strip">${o.images
+          .map((src, i) => `<img src="${src}" alt="Scene ${i + 1}" loading="lazy" data-full="${src}" />`)
+          .join("")}</div>`
+      : "";
+
+    card.innerHTML = `
+      ${thumb}
+      <div class="output-body">
+        <div class="name">${titleCase(o.name)}</div>
+        ${o.description ? `<div class="description">${o.description}</div>` : ""}
+        ${badges ? `<div class="output-badges">${badges}</div>` : ""}
+        ${gallery}
+        <div class="output-meta-row">
+          <span>${icon("clock", 13)} ${formatDuration(o.duration_seconds)}</span>
+          <span>${icon("film", 13)} ${o.scene_count ?? "—"} scenes</span>
+          <span>${icon("calendar", 13)} ${formatDate(o.created_at || o.modified_at)}</span>
+        </div>
+      </div>
+      <div class="output-actions"></div>`;
+
+    card.querySelectorAll(".scene-strip img").forEach((img, i) => {
+      img.addEventListener("click", () => openLightbox(o.images, i));
+    });
+
+    const actions = card.querySelector(".output-actions");
+    if (o.video_url) {
+      const dl = document.createElement("a");
+      dl.className = "btn-secondary";
+      dl.href = `/api/outputs/${encodeURIComponent(o.name)}/download`;
+      dl.download = `${o.name}.mp4`;
+      dl.innerHTML = `${icon("download", 14)} Download`;
+      actions.appendChild(dl);
+    }
+
+    const remix = document.createElement("button");
+    remix.className = "btn-secondary";
+    remix.innerHTML = `${icon("music", 14)} Music`;
+    remix.title = "Change the background music";
+    remix.addEventListener("click", () => openRemixModal(o));
+    actions.appendChild(remix);
+    const del = document.createElement("button");
+    del.className = "btn-danger";
+    del.innerHTML = `${icon("trash-2", 14)} Delete`;
+    del.addEventListener("click", async () => {
+      const ok = await confirmAction({
+        title: `Delete "${titleCase(o.name)}"?`,
+        message: "The video, scene images and voice-over files are removed from disk. This can't be undone.",
+        confirmLabel: "Delete video",
+      });
+      if (!ok) return;
+      del.disabled = true;
+      del.innerHTML = `${icon("loader-circle", 14)} Deleting\u2026`;
+      refreshIcons();
+      try {
+        const res = await fetch(`/api/outputs/${encodeURIComponent(o.name)}`, { method: "DELETE" });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || `Server returned ${res.status}`);
+        }
+        await loadOutputs();
+        toast(`Deleted "${titleCase(o.name)}"`);
+      } catch (err) {
+        del.disabled = false;
+        del.innerHTML = `${icon("trash-2", 14)} Delete`;
+        refreshIcons();
+        toast(err.message || "Could not delete that output", "error");
+      }
+    });
+    actions.appendChild(del);
+
+    grid.appendChild(card);
+  });
+
+  refreshIcons();
+}
+
+function setupLightbox() {
+  $("lightbox-close").addEventListener("click", closeLightbox);
+  $("lightbox-prev").addEventListener("click", (e) => { e.stopPropagation(); stepLightbox(-1); });
+  $("lightbox-next").addEventListener("click", (e) => { e.stopPropagation(); stepLightbox(1); });
+  $("lightbox").addEventListener("click", (e) => {
+    if (e.target === $("lightbox")) closeLightbox();
+  });
+}
+
+function openLightbox(images, index) {
+  state.lightboxImages = images;
+  state.lightboxIndex = index;
+  $("lightbox").classList.remove("hidden");
+  renderLightbox();
+  refreshIcons();
+}
+
+function closeLightbox() {
+  $("lightbox").classList.add("hidden");
+}
+
+function stepLightbox(delta) {
+  const total = state.lightboxImages.length;
+  state.lightboxIndex = (state.lightboxIndex + delta + total) % total;
+  renderLightbox();
+}
+
+function renderLightbox() {
+  const total = state.lightboxImages.length;
+  $("lightbox-image").src = state.lightboxImages[state.lightboxIndex];
+  $("lightbox-caption").textContent = `Scene ${state.lightboxIndex + 1} of ${total}`;
+  $("lightbox-prev").disabled = total < 2;
+  $("lightbox-next").disabled = total < 2;
+}
+
+/* ---------------- Remix background music ---------------- */
+
+function setupRemix() {
+  const close = () => {
+    stopMusicPreview();
+    $("remix-overlay").classList.add("hidden");
+    $("remix-modal").classList.add("hidden");
+  };
+  $("remix-close").addEventListener("click", close);
+  $("remix-cancel").addEventListener("click", close);
+  $("remix-overlay").addEventListener("click", close);
+
+  $("remix-music-volume").addEventListener("input", (e) => {
+    $("remix-music-out").textContent = Number(e.target.value) === 0 ? "Off" : `${Math.round(e.target.value * 100)}%`;
+  });
+  $("remix-ambience-volume").addEventListener("input", (e) => {
+    $("remix-ambience-out").textContent = Number(e.target.value) === 0 ? "Off" : `${Math.round(e.target.value * 100)}%`;
+  });
+
+  $("remix-start").addEventListener("click", startRemix);
+}
+
+async function openRemixModal(output) {
+  stopMusicPreview();
+  state.remixTarget = output.name;
+  state.remixTrack = "";
+  $("remix-story").textContent = titleCase(output.name);
+  $("remix-progress-track").hidden = true;
+  $("remix-status").hidden = true;
+  $("remix-start").disabled = false;
+
+  const res = await fetch("/api/assets");
+  const { assets } = await res.json();
+  renderRemixTracks(assets);
+
+  $("remix-overlay").classList.remove("hidden");
+  $("remix-modal").classList.remove("hidden");
+  refreshIcons();
+}
+
+function renderRemixTracks(assets) {
+  const browser = $("remix-music-browser");
+  browser.innerHTML = "";
+
+  const entries = [{ path: "", label: "No music (voice only)" }].concat(
+    assets.map((f) => ({ path: `assets/${f}`, label: titleCase(f.replace(/\.[^.]+$/, "")) }))
+  );
+
+  entries.forEach(({ path, label }) => {
+    const item = document.createElement("div");
+    item.className = path === state.remixTrack ? "music-item selected" : "music-item";
+
+    const play = document.createElement("button");
+    play.type = "button";
+    play.className = "music-play";
+    play.dataset.path = path;
+    play.disabled = !path;
+    play.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleMusicPlayback(path);
+    });
+
+    const name = document.createElement("span");
+    name.className = "music-name";
+    name.textContent = label;
+
+    item.appendChild(play);
+    item.appendChild(name);
+    if (path === state.remixTrack) {
+      const check = document.createElement("span");
+      check.className = "music-check";
+      check.innerHTML = icon("check", 15);
+      item.appendChild(check);
+    }
+
+    item.addEventListener("click", () => {
+      state.remixTrack = path;
+      renderRemixTracks(assets);
+    });
+
+    browser.appendChild(item);
+  });
+  syncMusicIcons();
+}
+
+async function startRemix() {
+  const name = state.remixTarget;
+  $("remix-start").disabled = true;
+  $("remix-progress-track").hidden = false;
+  $("remix-status").hidden = false;
+  $("remix-status").textContent = "Starting\u2026";
+  $("remix-progress-fill").style.width = "5%";
+
+  const res = await fetch(`/api/outputs/${encodeURIComponent(name)}/remix`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      music_file: state.remixTrack || null,
+      music_volume: parseFloat($("remix-music-volume").value),
+      ambience_volume: parseFloat($("remix-ambience-volume").value),
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    $("remix-status").textContent = err.detail || "Could not start";
+    $("remix-start").disabled = false;
+    return;
+  }
+
+  const { job_id } = await res.json();
+  const source = new EventSource(`/api/generate/${job_id}/stream`);
+  source.onmessage = (msg) => {
+    const event = JSON.parse(msg.data);
+    if (event.type === "progress") {
+      const percent = stagePercent(event);
+      $("remix-status").textContent = event.message;
+      if (percent !== null) $("remix-progress-fill").style.width = percent + "%";
+    } else if (event.type === "complete") {
+      $("remix-progress-fill").style.width = "100%";
+      $("remix-status").textContent = "Finished";
+      toast("Music updated");
+    } else if (event.type === "error") {
+      $("remix-status").textContent = event.message;
+      toast("Re-render failed", "error");
+    } else if (event.type === "end") {
+      source.close();
+      $("remix-start").disabled = false;
+      loadOutputs();
+    }
+  };
+  source.onerror = () => {
+    source.close();
+    $("remix-start").disabled = false;
+  };
+}
+
+function setupOutputsToolbar() {
+  $("outputs-search").addEventListener("input", renderOutputs);
+  $("outputs-sort").addEventListener("change", renderOutputs);
+  $("outputs-refresh-btn").addEventListener("click", async () => {
+    await loadOutputs();
+    toast("Outputs refreshed");
+  });
+}
+
+/* ---------------- Init ---------------- */
+
+async function init() {
+  setupTabs();
+  setupSaveBar();
+  setupProviderToggle();
+  setupAdvancedDrawer();
+  setupRanges();
+  setupStylePresets();
+  setupStorySelect();
+  setupMusicUpload();
+  setupSummaryWatchers();
+  setupGenerate();
+  setupPrompts();
+  setupOutputsToolbar();
+  setupVoicePreview();
+  setupLightbox();
+  setupRemix();
+  setupConfirm();
+
+  await loadStoriesList();
+  await loadCategoriesIntoSelect($("opt-category"));
+  await loadMusicAssets();
+  await loadConfigSummary();
+
+  enhanceAllSelects();
+  updateSummary();
+  refreshIcons();
+
+  await loadOutputCount();
+
+  const requested = location.hash.replace("#", "");
+  switchTab(TABS.includes(requested) ? requested : "story");
+}
+
+async function loadConfigSummary() {
+  try {
+    const res = await fetch("/api/config");
+    const fields = await res.json();
+    state.config = fields;
+    state.imageProvider = fields.find((f) => f.key === "IMAGE_PROVIDER")?.value || "local";
+  } catch {
+    state.config = [];
+  }
+}
+
+async function loadOutputCount() {
+  try {
+    const res = await fetch("/api/outputs");
+    const data = await res.json();
+    state.outputs = data.outputs;
+    $("nav-outputs-count").textContent = data.outputs.length || "";
+  } catch {
+    $("nav-outputs-count").textContent = "";
+  }
+}
+
+function setupGlobalKeys() {
+  document.addEventListener("keydown", (e) => {
+    if (!$("lightbox").classList.contains("hidden")) {
+      if (e.key === "ArrowLeft") return stepLightbox(-1);
+      if (e.key === "ArrowRight") return stepLightbox(1);
+      if (e.key === "Escape") return closeLightbox();
+    }
+    if (e.key !== "Escape") return;
+    if (confirmResolver) return closeConfirm(false);
+    if (!$("remix-modal").classList.contains("hidden")) {
+      stopMusicPreview();
+      $("remix-overlay").classList.add("hidden");
+      return $("remix-modal").classList.add("hidden");
+    }
+    if (!$("review-modal").classList.contains("hidden")) return closeReviewModal();
+    if (!$("advanced-drawer").classList.contains("hidden")) {
+      $("advanced-drawer").classList.add("hidden");
+      $("advanced-overlay").classList.add("hidden");
+    }
+  });
+
+  window.addEventListener("beforeunload", (e) => {
+    if (state.dirty || $("generate-btn").disabled) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  });
+}
+
+async function boot() {
+  try {
+    setupGlobalKeys();
+    await init();
+  } catch (err) {
+    toast("Could not reach the server. Is storytube-web still running?", "error");
+    console.error(err);
+  } finally {
+    const boot = $("boot");
+    boot.classList.add("done");
+    setTimeout(() => boot.remove(), 300);
+  }
+}
+
+boot();
