@@ -952,9 +952,10 @@ async function startPublish() {
   }
 
   const percents = isYoutube
-    ? { container: 20, uploading: 60, done: 100 }
+    ? { container: 20, uploading: 60, thumbnail: 85, done: 100 }
     : { checking: 10, container: 25, uploading: 55, processing: 80, publishing: 92, done: 100 };
   const doneLabel = isYoutube ? "Posted to YouTube" : "Posted to Instagram";
+  let thumbnailNote = "";
   const { job_id } = await res.json();
   const source = new EventSource(`/api/generate/${job_id}/stream`);
   source.onmessage = async (msg) => {
@@ -963,16 +964,23 @@ async function startPublish() {
       $("publish-status").textContent = event.message;
       const pct = percents[event.stage];
       if (pct) $("publish-progress-fill").style.width = `${pct}%`;
+      if (isYoutube && event.stage === "done") {
+        thumbnailNote = event.thumbnail_set
+          ? ""
+          : ` (custom thumbnail skipped: ${event.thumbnail_error || "channel not eligible"})`;
+      }
     } else if (event.type === "complete") {
       source.close();
       $("publish-progress-fill").style.width = "100%";
-      $("publish-status").textContent = doneLabel;
-      toast(doneLabel);
+      $("publish-status").textContent = doneLabel + thumbnailNote;
+      toast(doneLabel + (thumbnailNote ? " \u2014 thumbnail needs phone verification" : ""));
       if (state.activeTab === "outputs") await loadOutputs();
+      const publishedCurrentPoem = state.lastPoemName && name === state.lastPoemName;
       setTimeout(() => {
         $("publish-overlay").classList.add("hidden");
         $("publish-modal").classList.add("hidden");
-      }, 1200);
+        if (publishedCurrentPoem) resetPoemForm();
+      }, thumbnailNote ? 2200 : 1200);
     } else if (event.type === "error") {
       source.close();
       $("publish-progress-fill").classList.add("failed");
@@ -1399,6 +1407,21 @@ function clearPoemBackground() {
   renderPoemPreview();
 }
 
+function resetPoemForm() {
+  $("poem-text").value = "";
+  $("poem-text").dispatchEvent(new Event("input", { bubbles: true }));
+  clearPoemBackground();
+  $("poem-seed").value = 0;
+  $("poem-seed-out").textContent = "0";
+  $("poem-caption").value = "";
+  $("poem-result-card").hidden = true;
+  $("poem-progress-card").hidden = true;
+  state.lastPoemName = null;
+  $("poem-text").scrollIntoView({ behavior: "smooth", block: "center" });
+  $("poem-text").focus();
+  toast("Ready for a new poem");
+}
+
 function setPoemNarrate(on) {
   state.poemNarrate = on;
   document.querySelectorAll("#poem-voice-segmented .segment").forEach((s) =>
@@ -1684,6 +1707,7 @@ function setupPoetry() {
   $("poem-publish-yt").addEventListener("click", () => {
     if (state.lastPoemName) openPublishModal(state.lastPoemName, $("poem-caption").value, "youtube");
   });
+  $("poem-clear").addEventListener("click", () => resetPoemForm());
 
   setupCropDragging();
   $("poem-size").addEventListener("change", () => {
@@ -2522,6 +2546,7 @@ function appendYoutubeHelp(panel) {
        <li>Create Credentials \u2192 OAuth client ID \u2192 type <b>Desktop app</b>.</li>
        <li>Copy the Client ID and Client Secret it shows into the two fields above and save.</li>
        <li>Click <b>Connect YouTube</b> below, sign in with the Google account that owns your channel, and approve.</li>
+       <li>Custom thumbnails (recommended, so the caption card is what shows up rather than a random frame) need your channel to be <a href="https://www.youtube.com/verify" target="_blank" rel="noopener">phone-verified</a>. Without that, posting still works, YouTube just picks its own thumbnail.</li>
      </ol>`;
   panel.appendChild(steps);
 

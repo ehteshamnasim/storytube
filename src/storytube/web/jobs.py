@@ -68,13 +68,23 @@ class Job:
         self._run(work)
 
     def start_youtube(
-        self, video: Path, title: str, description: str, out_dir: Path, access_token: str, privacy: str
+        self,
+        video: Path,
+        title: str,
+        description: str,
+        out_dir: Path,
+        access_token: str,
+        privacy: str,
+        thumbnail_path: Optional[Path] = None,
     ) -> None:
         def work() -> Path:
             def on_progress(stage: str, message: str) -> None:
                 self.events.put({"type": "progress", "stage": stage, "message": message})
 
-            result = youtube.upload_short(video, title, description, access_token, privacy, on_progress=on_progress)
+            result = youtube.upload_short(
+                video, title, description, access_token, privacy,
+                thumbnail_path=thumbnail_path, on_progress=on_progress,
+            )
             youtube.write_state(out_dir, result)
             self.events.put({"type": "progress", "stage": "done", "message": "Posted", **result})
             return video
@@ -110,12 +120,19 @@ def create_instagram_job(name: str, video: Path, caption: str, out_dir: Path, us
 
 
 def create_youtube_job(
-    name: str, video: Path, title: str, description: str, out_dir: Path, access_token: str, privacy: str
+    name: str,
+    video: Path,
+    title: str,
+    description: str,
+    out_dir: Path,
+    access_token: str,
+    privacy: str,
+    thumbnail_path: Optional[Path] = None,
 ) -> Job:
     job_id = uuid.uuid4().hex[:12]
     job = Job(job_id, name)
     _jobs[job_id] = job
-    job.start_youtube(video, title, description, out_dir, access_token, privacy)
+    job.start_youtube(video, title, description, out_dir, access_token, privacy, thumbnail_path)
     return job
 
 

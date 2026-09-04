@@ -23,6 +23,7 @@ models licensed for commercial use — so the videos are safe to monetise.
 - [Configuration](#configuration)
 - [Using the web app](#using-the-web-app)
 - [Poetry reels](#poetry-reels)
+- [Publishing to Instagram and YouTube](#publishing-to-instagram-and-youtube)
 - [Using the command line](#using-the-command-line)
 - [Providers you can choose](#providers-you-can-choose)
 - [How a video is built](#how-a-video-is-built)
@@ -135,22 +136,19 @@ and applies immediately without a restart.
 | `HF_TOKEN` | Local images, or Hugging Face provider | https://huggingface.co/settings/tokens |
 | `POLLINATIONS_API_KEY` | Pollinations provider | https://enter.pollinations.ai/keys |
 | `SARVAM_API_KEY` | Sarvam voices | https://indus.sarvam.ai |
+| `ELEVENLABS_API_KEY` | ElevenLabs voices | https://elevenlabs.io/app/settings/api-keys |
 | `IG_USER_ID` | Checking Instagram credentials | Meta Graph API Explorer |
 | `IG_ACCESS_TOKEN` | Checking Instagram credentials | https://developers.facebook.com/docs/instagram-platform/content-publishing |
+| `YOUTUBE_API_KEY` | Optional, public channel lookups | https://console.cloud.google.com/apis/credentials |
+| `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET` | Posting/analytics on YouTube | Google Cloud Console → Credentials → OAuth client ID → Desktop app |
+| `YOUTUBE_REFRESH_TOKEN`, `YOUTUBE_CHANNEL_ID`, `YOUTUBE_CHANNEL_TITLE` | — | Written automatically by **Connect YouTube**, never typed in by hand |
 | `OUTPUT_DIR` | Optional | Defaults to `output` |
 
 For the Hugging Face token, create a **fine-grained** token with *"Make calls to Inference
 Providers"* enabled — a default token returns 403.
 
-The Instagram keys enable **Settings → Instagram → Test connection**, which confirms your token
-and account ID resolve to a Business or Creator account, and **Post to Instagram** on any
-finished video. Reels are uploaded straight from your Mac using Meta's resumable upload, so no
-public URL or tunnel is needed. Posts are marked *posted* in Outputs, where **Insights** shows
-views, reach, likes, comments, saves and shares.
-
-Instagram's API has no delete endpoint, so publishing is final — a post can only be removed by
-hand in the app. The app asks you to confirm before posting, and refuses to post the same video
-twice.
+The Instagram and YouTube keys enable in-app publishing and insights — see
+[Publishing to Instagram and YouTube](#publishing-to-instagram-and-youtube) below.
 
 ---
 
@@ -171,10 +169,11 @@ render — a voice that cannot speak your language, a missing API key, music vol
 track selected. Nothing starts until you confirm.
 
 **Outputs** — every video with its description, runtime, scene count, thumbnails of each
-generated scene, and download or delete actions. Filter by **Reels & Shorts**, **YouTube** or
-**Square** to separate vertical from landscape work. Click any thumbnail to view it full size.
-**Music** re-renders an existing video with a different background track, reusing the cached
-images and voice-over so it finishes in under a minute.
+generated scene, and download or delete actions. Filter by **Reels & Shorts**, **Landscape** or
+**Square** to separate vertical from widescreen work. Click any thumbnail to view it full size.
+Eligible reels (portrait or square, 3 minutes or under) show **Post** and **Shorts** buttons
+directly on the card — no menu-hunting. **Music** re-renders an existing video with a different
+background track, reusing the cached images and voice-over so it finishes in under a minute.
 
 **Prompts** — edit the scene-planning template per category. Every save is version-archived so
 you can roll back. You can also create new categories here.
@@ -187,8 +186,9 @@ Settings that do not apply to your current providers are marked *inactive* rathe
 ## Poetry reels
 
 The **Poetry Reel** tab turns two or three lines into a vertical video with the words set on the
-image. Unlike story videos the image does not move — the frame is still, with a gentle fade in
-and out, which suits text on screen.
+image. Unlike story videos the image does not move — the frame is still, with no fade at either
+end, so the first frame (your feed thumbnail) and the last frame (the loop point on autoplay)
+both show the actual artwork rather than black.
 
 The form is deliberately short: the poem, the background, and the music. Everything else —
 handle, shape, music volume, pacing, style prompt and image seed — lives under **Advanced** and
@@ -208,6 +208,21 @@ Urdu is set in Nastaliq and Hindi in Devanagari. Line breaks are preserved: the 
 fit rather than wrapping, because wrapping a verse destroys its metre. Characters no font can
 draw, such as emoji, are dropped from the image and kept in the caption.
 
+**Voice-over** is optional — flip to *Read the poem aloud* and pick a reader. Only readers that
+can actually speak the poem's script are listed (Urdu-script text only offers Urdu readers, and
+so on), because a mismatched voice returns silence rather than a bad accent. Reader is one of:
+
+- **Free (edge-tts)** — ten voices across Urdu, Hindi, Bengali and English, no account needed
+- **ElevenLabs** — pulls in whichever voices are in your own account; needs a paid plan
+  (Starter or above) for a commercial licence, and Urdu specifically needs the `eleven_v3`
+  model, chosen automatically — Multilingual v2 does not cover Urdu
+
+**Delivery** shapes how the reader paces it: *Natural* reads the poem as one block; *Recitation*
+(the default) and *Slow* read one line at a time with a real pause at each break and a slower,
+lower-pitched voice — pace and silence are most of what makes a recitation sound like one,
+rather than a newsreader. **Listen** always auditions the exact voice, delivery and script
+combination you have selected.
+
 From the command line:
 
 ```bash
@@ -220,7 +235,50 @@ storytube-poem \
 
 ---
 
-## Using the command line
+## Publishing to Instagram and YouTube
+
+Both platforms are reached from the same places: a **Post** button on the poem/story result
+card right after generation, and **Post** / **Shorts** buttons on eligible cards in Outputs
+(portrait or square, 3 minutes or under — landscape videos and anything longer only get a
+Download button, since neither platform's short-form format accepts them).
+
+### Instagram
+
+Add `IG_USER_ID` and `IG_ACCESS_TOKEN` in Settings, then **Test connection** confirms the token
+and account resolve to a Business or Creator account (personal accounts cannot publish through
+the API). Reels upload straight from your Mac using Meta's resumable upload — no public URL or
+tunnel needed. Once posted, the same button becomes **Insights**: views, reach, likes, comments,
+saves and shares.
+
+Instagram's API has no delete endpoint, so publishing is final — a post can only be removed by
+hand in the app. The app confirms before posting, and refuses to post the same video twice
+unless you explicitly choose to.
+
+### YouTube
+
+Uploading a video and reading private analytics both require **OAuth 2.0** — a plain API key
+can only read public data, and Google rejects it for either. One-time setup in
+**Settings → YouTube**:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), enable
+   **YouTube Data API v3** and **YouTube Analytics API**, then create an OAuth client ID of
+   type **Desktop app**.
+2. Paste the Client ID and Client Secret into Settings and save.
+3. Click **Connect YouTube** — it opens Google's consent screen in a new tab; sign in with the
+   account that owns your channel and approve. A short-lived local server catches the redirect
+   and stores a refresh token, so this is a one-time step.
+
+Posting uploads the video, sets its title/description/privacy, and appends `#Shorts` to the
+description if you have not already added it. It also sets a **custom thumbnail** — the poem's
+lettered card image, or a story's first scene — instead of leaving YouTube to auto-pick a
+random frame. Custom thumbnails need your channel to be
+[phone-verified](https://www.youtube.com/verify); without that the post still succeeds and the
+app tells you specifically that the thumbnail was skipped, rather than failing silently.
+
+**Insights** shows both view/like/comment counts and channel-owned watch-time analytics
+(minutes watched, average view duration), the latter only available once you are connected.
+
+---
 
 ```bash
 storytube stories/thirsty_dog.txt \
@@ -273,6 +331,7 @@ Scene plans and images are cached, so re-running only redoes what changed.
 | `edge` | Free | Instant | Many, including Hindi and Urdu |
 | **`indicf5`** | Free, unlimited | ~20–30s per scene | 11 Indian languages. Runs locally. **No Urdu** |
 | `sarvam` | Paid API | ~2s | Hindi, Urdu, English with Indian voices |
+| `elevenlabs` | Paid, from $6/mo (poetry reels only) | ~2–5s | Whatever voices are in your account. Needs `eleven_v3` for Urdu |
 
 `edge` returns **no audio at all** if the voice locale does not match the narration language.
 The app switches the voice automatically when you change language, and the review dialog blocks
@@ -318,6 +377,10 @@ src/storytube/
   tts.py              edge-tts
   tts_indicf5.py      IndicF5 via its isolated worker
   tts_sarvam.py       Sarvam API
+  tts_elevenlabs.py   ElevenLabs API
+  poetry.py           poetry reel generation (typography, narration, video)
+  instagram.py        Instagram Graph API: publish + insights
+  youtube.py          YouTube OAuth connect, Shorts upload, thumbnail, analytics
   assemble.py         all ffmpeg work
   captions.py         SRT building
   config.py           live configuration, re-read on every access

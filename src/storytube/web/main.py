@@ -149,6 +149,24 @@ def video_file(story_dir: Path) -> Optional[Path]:
     return None
 
 
+def thumbnail_file(story_dir: Path) -> Optional[Path]:
+    """The best still to use as a custom YouTube thumbnail.
+
+    A poem's card.png already has the poem lettered onto it, so it makes a far better
+    thumbnail than any single video frame. A story has no such card, so the first scene
+    image stands in instead.
+    """
+    card = story_dir / "card.png"
+    if card.exists():
+        return card
+    images_dir = story_dir / "images"
+    if images_dir.is_dir():
+        first = sorted(images_dir.glob("*.png"))
+        if first:
+            return first[0]
+    return None
+
+
 @app.get("/api/outputs")
 def list_outputs() -> dict:
     output_dir = config.OUTPUT_DIR
@@ -517,7 +535,8 @@ def youtube_publish(name: str, payload: YoutubePublishRequest) -> dict:
         description = caption_path.read_text(encoding="utf-8") if caption_path.exists() else ""
 
     job = jobs.create_youtube_job(
-        story_dir.name, video, title, description, story_dir, access_token, payload.privacy
+        story_dir.name, video, title, description, story_dir, access_token, payload.privacy,
+        thumbnail_path=thumbnail_file(story_dir),
     )
     return {"job_id": job.id, "name": story_dir.name}
 

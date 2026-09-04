@@ -22,6 +22,7 @@ from . import config
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 UPLOAD_URL = "https://www.googleapis.com/upload/youtube/v3/videos"
+THUMBNAIL_URL = "https://www.googleapis.com/upload/youtube/v3/thumbnails/set"
 API_BASE = "https://www.googleapis.com/youtube/v3"
 ANALYTICS_URL = "https://youtubeanalytics.googleapis.com/v2/reports"
 SCOPES = [
@@ -212,6 +213,7 @@ def upload_short(
     description: str,
     access_token: str,
     privacy: str = "public",
+    thumbnail_path: Optional[Path] = None,
     on_progress: Optional[Callable[[str, str], None]] = None,
 ) -> dict:
     def report(stage: str, message: str) -> None:
@@ -269,13 +271,46 @@ def upload_short(
     if not video_id:
         raise YouTubeError("YouTube accepted the upload but returned no video ID.")
 
+    thumbnail_set = False
+    thumbnail_error = None
+    if thumbnail_path and thumbnail_path.is_file():
+        report("thumbnail", "Setting the thumbnail…")
+        try:
+            set_thumbnail(video_id, thumbnail_path, access_token)
+            thumbnail_set = True
+        except YouTubeError as exc:
+            # Custom thumbnails need a phone-verified channel; this must not fail the whole post.
+            thumbnail_error = str(exc)
+
     report("done", "Posted to YouTube")
     return {
         "video_id": video_id,
         "url": f"https://youtube.com/shorts/{video_id}",
         "title": title,
         "privacy": privacy,
+        "thumbnail_set": thumbnail_set,
+        "thumbnail_error": thumbnail_error,
     }
+
+
+def set_thumbnail(video_id: str, image_path: Path, access_token: str) -> None:
+    mime = "image/png" if image_path.suffix.lower() == ".png" else "image/jpeg"
+    response = requests.post(
+        THUMBNAIL_URL,
+        headers={"Authorization": f"Bearer {access_token}", "Content-Type": mime},
+        params={"videoId": video_id},
+        data=image_path.read_bytes(),
+        timeout=TIMEOUT,
+    )
+    payload = response.json() if response.content else {}
+    if response.status_code >= 400:
+        message = payload.get("error", {}).get("message", f"HTTP {response.status_code}")
+        if response.status_code == 403:
+            message = (
+                "Custom thumbnails need your channel to be phone-verified. "
+                "Verify at youtube.com/verify, or the video just uses YouTube's auto-picked frame."
+            )
+        raise YouTubeError(message)
 
 
 def get_stats(video_id: str, access_token: str) -> dict:
