@@ -55,6 +55,7 @@ class PoemRequest(BaseModel):
     narrate: bool = False
     voice: str = ""
     delivery: str = "recitation"
+    voice_provider: str = "edge"
 
 
 class GenerateRequest(BaseModel):

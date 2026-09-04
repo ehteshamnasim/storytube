@@ -10,7 +10,7 @@ _STRING_DEFAULTS = {
     "HF_IMAGE_MODEL": "black-forest-labs/FLUX.1-schnell",
     "IMAGE_PROVIDER": "huggingface",
 }
-_SECRET_KEYS = {"GEMINI_API_KEY", "HF_TOKEN", "POLLINATIONS_API_KEY", "SARVAM_API_KEY"}
+_SECRET_KEYS = {"GEMINI_API_KEY", "HF_TOKEN", "POLLINATIONS_API_KEY", "SARVAM_API_KEY", "ELEVENLABS_API_KEY"}
 _PATH_DEFAULTS = {"OUTPUT_DIR": "output", "PROMPTS_DIR": "prompts", "STORIES_DIR": "stories"}
 
 _FFMPEG_FULL = Path("/opt/homebrew/opt/ffmpeg-full/bin")

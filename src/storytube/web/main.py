@@ -28,6 +28,7 @@ from ..poetry import (
 )
 from ..story_reader import read_story
 from ..tts import generate_voice_over
+from ..tts_elevenlabs import generate_voice_over_elevenlabs, list_voices as list_elevenlabs_voices
 from ..tts_indicf5 import generate_voice_over_indicf5
 from ..tts_sarvam import generate_voice_over_sarvam
 from . import config_store, jobs, prompt_store
@@ -252,6 +253,14 @@ SARVAM_LANGUAGE_CODES = {
 }
 
 
+@app.get("/api/elevenlabs/voices")
+def elevenlabs_voices() -> dict:
+    try:
+        return {"voices": list_elevenlabs_voices()}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/api/voice-preview")
 def voice_preview(payload: VoicePreviewRequest) -> dict:
     text = PREVIEW_TEXT.get(payload.language.lower(), DEFAULT_PREVIEW_TEXT)
@@ -270,6 +279,12 @@ def voice_preview(payload: VoicePreviewRequest) -> dict:
                 generate_voice_over_indicf5(text, payload.voice, out_path)
             elif payload.provider == "sarvam":
                 generate_voice_over_sarvam(text, payload.voice, out_path, language_code=language_code)
+            elif payload.provider == "elevenlabs":
+                pace = DELIVERY.get(payload.delivery, DELIVERY["natural"])
+                generate_voice_over_elevenlabs(
+                    text, payload.voice, out_path, language=payload.language,
+                    style=pace["style"], speed=pace["speed"],
+                )
             else:
                 pace = DELIVERY.get(payload.delivery, DELIVERY["natural"])
                 generate_voice_over(text, payload.voice, out_path, rate=pace["rate"], pitch=pace["pitch"])
@@ -354,6 +369,7 @@ def start_poem(payload: PoemRequest) -> dict:
         narrate=payload.narrate,
         voice=payload.voice,
         delivery=payload.delivery,
+        voice_provider=payload.voice_provider,
     )
     job = jobs.create_poem_job(name, "\n".join(lines), options)
     return {"job_id": job.id, "name": name, "lines": lines}

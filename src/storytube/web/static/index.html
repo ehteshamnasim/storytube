@@ -431,12 +431,16 @@
 
               <div class="field-row" id="poem-voice-row" hidden>
                 <label for="poem-voice">Reader</label>
+                <div class="segmented" id="poem-provider-segmented">
+                  <button class="segment active" data-value="edge">Free</button>
+                  <button class="segment" data-value="elevenlabs">ElevenLabs</button>
+                </div>
                 <div class="voice-row">
                   <select id="poem-voice"></select>
                   <button class="btn-secondary" id="poem-voice-listen"><i data-lucide="volume-2"></i> Listen</button>
                 </div>
                 <div class="help-text" id="poem-voice-note" hidden></div>
-                <div class="help-text">Free, via edge-tts. The reel length follows the reading, so pacing is ignored.</div>
+                <div class="help-text" id="poem-voice-help">Free, via edge-tts. The reel length follows the reading, so pacing is ignored.</div>
                 <audio id="poem-voice-audio" hidden></audio>
               </div>
 

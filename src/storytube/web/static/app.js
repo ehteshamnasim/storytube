@@ -16,6 +16,8 @@ const state = {
   poemMode: "generate",
   poemNarrate: false,
   poemDelivery: "recitation",
+  poemProvider: "edge",
+  elevenVoices: null,
   poemVoiceTouched: false,
   poemBackground: null,
   poemUndrawable: [],
@@ -1098,7 +1100,7 @@ function poemWarnings(lines) {
     warnings.push(["info", "No Gemini key, so the caption will just be your poem plus general hashtags."]);
   }
 
-  if (state.poemNarrate && lines.length && !readersFor(scriptOf(lines.join(" "))).length) {
+  if (state.poemNarrate && lines.length && state.poemProvider !== "elevenlabs" && !readersFor(scriptOf(lines.join(" "))).length) {
     warnings.push(["danger", "No free reader can read this script yet. Turn the voice-over off to carry on."]);
   }
   return warnings;
@@ -1129,6 +1131,7 @@ function gatherPoemOptions() {
     narrate: state.poemNarrate === true,
     voice: $("poem-voice").value,
     delivery: state.poemDelivery || "recitation",
+    voice_provider: state.poemProvider || "edge",
   };
 }
 
@@ -1143,6 +1146,7 @@ function savePoemPrefs() {
   prefs.mode = state.poemMode || "generate";
   prefs.narrate = state.poemNarrate === true;
   prefs.delivery = state.poemDelivery || "recitation";
+  prefs.provider = state.poemProvider || "edge";
   try {
     localStorage.setItem(POEM_PREFS_KEY, JSON.stringify(prefs));
   } catch {
@@ -1358,7 +1362,46 @@ function readersFor(script) {
   return script === "latin" ? POEM_READERS : POEM_READERS.filter((r) => r.script === script);
 }
 
+async function setPoemProvider(provider) {
+  state.poemProvider = provider;
+  document.querySelectorAll("#poem-provider-segmented .segment").forEach((s) =>
+    s.classList.toggle("active", s.dataset.value === provider)
+  );
+  stopVoicePreview();
+  const select = $("poem-voice");
+  select.dataset.signature = "";
+  if (provider === "elevenlabs") {
+    $("poem-voice-help").textContent = "Your ElevenLabs voices. Each reel costs credits, roughly one per character.";
+    $("poem-voice-note").hidden = true;
+    if (!state.elevenVoices) {
+      select.innerHTML = "";
+      select.add(new Option("Loading your voices…", ""));
+      enhanceAllSelects($("poem-voice-row"));
+      try {
+        const res = await fetch("/api/elevenlabs/voices");
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Could not reach ElevenLabs.");
+        state.elevenVoices = data.voices;
+      } catch (err) {
+        toast(err.message, "error");
+        setPoemProvider("edge");
+        return;
+      }
+    }
+    select.innerHTML = "";
+    state.elevenVoices.forEach((v) => select.add(new Option(v.name, v.voice_id)));
+    if (!state.elevenVoices.length) select.add(new Option("No voices in your account", ""));
+    enhanceAllSelects($("poem-voice-row"));
+  } else {
+    $("poem-voice-help").textContent = "Free, via edge-tts. The reel length follows the reading, so pacing is ignored.";
+    syncPoemReaders();
+  }
+  savePoemPrefs();
+  renderPoemPreview();
+}
+
 function syncPoemReaders() {
+  if (state.poemProvider === "elevenlabs") return;
   const select = $("poem-voice");
   const script = scriptOf($("poem-text").value);
   const allowed = readersFor(script);
@@ -1402,8 +1445,11 @@ async function previewPoemVoice() {
   const btn = $("poem-voice-listen");
   const audio = $("poem-voice-audio");
   const voice = $("poem-voice").value;
-  // Audition the voice with text in its own locale; another language returns no audio.
-  const language = EDGE_LOCALE_LANGUAGE[voice.split("-")[0]] || "English";
+  const provider = state.poemProvider || "edge";
+  // edge voices only speak their own locale; ElevenLabs takes the poem's language directly.
+  const language = provider === "elevenlabs"
+    ? $("poem-language").value
+    : EDGE_LOCALE_LANGUAGE[voice.split("-")[0]] || "English";
 
   btn.disabled = true;
   btn.innerHTML = `${icon("loader-circle", 14)} Loading…`;
@@ -1412,7 +1458,7 @@ async function previewPoemVoice() {
     const res = await fetch("/api/voice-preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider: "edge", voice, language, delivery: state.poemDelivery }),
+      body: JSON.stringify({ provider, voice, language, delivery: state.poemDelivery }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || "That voice could not produce a sample.");
@@ -1469,6 +1515,9 @@ function setupPoetry() {
   $("poem-voice-audio").addEventListener("ended", stopVoicePreview);
   document.querySelectorAll("#poem-delivery-segmented .segment").forEach((seg) =>
     seg.addEventListener("click", () => setPoemDelivery(seg.dataset.value))
+  );
+  document.querySelectorAll("#poem-provider-segmented .segment").forEach((seg) =>
+    seg.addEventListener("click", () => setPoemProvider(seg.dataset.value))
   );
   $("poem-language").addEventListener("change", () => {
     // Follow the language unless the reader was deliberately chosen.
@@ -1579,6 +1628,7 @@ function setupPoetry() {
   // Your own photo is both the fast path and the usual case, so it leads.
   setPoemMode(prefs.mode || "upload");
   setPoemDelivery(prefs.delivery || "recitation");
+  if (prefs.provider === "elevenlabs") setPoemProvider("elevenlabs");
   setPoemNarrate(prefs.narrate === true);
   renderPoemPreview();
 }

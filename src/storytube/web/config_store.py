@@ -102,6 +102,16 @@ CONFIG_SCHEMA: list[dict[str, Any]] = [
         "guidance_url": "https://indus.sarvam.ai",
     },
     {
+        "key": "ELEVENLABS_API_KEY",
+        "label": "ElevenLabs API Key",
+        "group": "Voice-over",
+        "type": "password",
+        "secret": True,
+        "help": "The most expressive reader, and the only one that handles Urdu well. Paid, from $6/month.",
+        "guidance": "Create a key under Profile > API Keys. The free tier has no commercial licence, so pick Starter or above before posting reels publicly.",
+        "guidance_url": "https://elevenlabs.io/app/settings/api-keys",
+    },
+    {
         "key": "IG_USER_ID",
         "label": "Instagram Account ID",
         "group": "Instagram",

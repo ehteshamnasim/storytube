@@ -26,6 +26,7 @@ from .assemble import add_background_ambience, get_audio_duration, mux_audio_vid
 from .bookends import build_card_clip
 from .image_gen import generate_image
 from .tts import generate_voice_over
+from .tts_elevenlabs import generate_voice_over_elevenlabs
 
 ProgressCallback = Callable[[str, str], None]
 
@@ -41,9 +42,9 @@ VOICE_LEAD_OUT = 1.6
 # A poem is carried by pace and silence, not by the voice alone. Reciting slows the
 # reader down, drops the pitch, and leaves a real gap where the line break is.
 DELIVERY = {
-    "natural": {"rate": "+0%", "pitch": "+0Hz", "pause": 0.0},
-    "recitation": {"rate": "-18%", "pitch": "-4Hz", "pause": 0.85},
-    "slow": {"rate": "-32%", "pitch": "-6Hz", "pause": 1.30},
+    "natural": {"rate": "+0%", "pitch": "+0Hz", "pause": 0.0, "speed": 1.0, "style": 0.30},
+    "recitation": {"rate": "-18%", "pitch": "-4Hz", "pause": 0.85, "speed": 0.88, "style": 0.45},
+    "slow": {"rate": "-32%", "pitch": "-6Hz", "pause": 1.30, "speed": 0.75, "style": 0.55},
 }
 DEFAULT_DELIVERY = "recitation"
 
@@ -117,6 +118,7 @@ class PoemOptions:
     narrate: bool = False
     voice: str = ""
     delivery: str = DEFAULT_DELIVERY
+    voice_provider: str = "edge"
 
 
 @dataclass
@@ -352,14 +354,31 @@ def _pad_voice(source: Path, out_path: Path, lead_in: float, total: float) -> Pa
     return out_path
 
 
-def _recite(lines: list[str], voice: str, out_dir: Path, out_path: Path, delivery: str) -> Path:
+def _recite(
+    lines: list[str],
+    voice: str,
+    out_dir: Path,
+    out_path: Path,
+    delivery: str,
+    provider: str = "edge",
+    language: str = "English",
+) -> Path:
     """Read the poem a line at a time so the line breaks are audible as silence."""
     settings = DELIVERY.get(delivery, DELIVERY[DEFAULT_DELIVERY])
     pause = settings["pause"]
     spoken = [line for line in lines if line.strip()]
 
+    def synthesise(text: str, path: Path) -> None:
+        if provider == "elevenlabs":
+            generate_voice_over_elevenlabs(
+                text, voice, path, language=language,
+                style=settings["style"], speed=settings["speed"],
+            )
+        else:
+            generate_voice_over(text, voice, path, rate=settings["rate"], pitch=settings["pitch"])
+
     if not pause or len(spoken) < 2:
-        generate_voice_over("\n".join(spoken), voice, out_path, rate=settings["rate"], pitch=settings["pitch"])
+        synthesise("\n".join(spoken), out_path)
         return out_path
 
     parts_dir = out_dir / "voice_lines"
@@ -367,7 +386,7 @@ def _recite(lines: list[str], voice: str, out_dir: Path, out_path: Path, deliver
     parts: list[Path] = []
     for index, line in enumerate(spoken):
         part = parts_dir / f"line_{index:02d}.mp3"
-        generate_voice_over(line, voice, part, rate=settings["rate"], pitch=settings["pitch"])
+        synthesise(line, part)
         parts.append(part)
 
     command = [config.FFMPEG_BIN, "-y", "-v", "error"]
@@ -597,7 +616,10 @@ def generate_poem_reel(
         voice = options.voice or default_poem_voice(options.language)
         report("voice", f"Reading the poem aloud ({voice})…")
         voice_path = out_dir / "voice.mp3"
-        _recite(lines, voice, out_dir, voice_path, options.delivery)
+        _recite(
+            lines, voice, out_dir, voice_path, options.delivery,
+            provider=options.voice_provider, language=options.language,
+        )
         spoken = get_audio_duration(voice_path)
         duration = min(MAX_REEL_SECONDS, max(MIN_REEL_SECONDS, spoken + VOICE_LEAD_IN + VOICE_LEAD_OUT))
     else:
