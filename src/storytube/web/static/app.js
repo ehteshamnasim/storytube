@@ -855,6 +855,17 @@ function setPublishAccount(kind, title, detail) {
   refreshIcons();
 }
 
+function deriveYoutubeTitle(name, caption) {
+  // A poem's folder name can be a bare timestamp (non-Latin poems have no ASCII
+  // slug to use), so prefer the poem's own first line over the folder name.
+  const firstLine = (caption || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line && !line.startsWith("#"));
+  if (firstLine) return firstLine.slice(0, 95);
+  return titleCase(name);
+}
+
 async function openPublishModal(name, caption, platform = "instagram") {
   state.publishTarget = name;
   state.publishPlatform = platform;
@@ -870,7 +881,7 @@ async function openPublishModal(name, caption, platform = "instagram") {
   $("publish-warning-yt").hidden = !isYoutube;
 
   if (isYoutube) {
-    $("publish-yt-title").value = titleCase(name);
+    $("publish-yt-title").value = deriveYoutubeTitle(name, caption);
     $("publish-yt-description").value = caption || "";
     $("publish-yt-description").dispatchEvent(new Event("input"));
     $("publish-yt-privacy").value = "public";

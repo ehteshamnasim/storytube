@@ -1685,6 +1685,8 @@ input.invalid, textarea.invalid {
 .poem-caption-block { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .poem-caption-block textarea { flex: 1; min-height: 160px; font-size: 13px; line-height: 1.6; resize: none; }
 .poem-result + .page-actions { margin-top: 18px; }
+.page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.page-actions-secondary { margin-top: 4px; }
 @media (max-width: 900px) {
   .poem-result { grid-template-columns: 1fr; }
   .poem-caption-block textarea { min-height: 200px; }
