@@ -290,7 +290,17 @@
                   <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
                 </div>
                 <div class="progress-percent" id="progress-percent">0%</div>
-                <div class="error-banner" id="progress-error" hidden></div>
+                <div class="error-banner" id="progress-error" hidden>
+                  <span class="error-icon"><i data-lucide="circle-alert"></i></span>
+                  <div class="error-body">
+                    <strong class="error-title">Generation failed</strong>
+                    <p class="error-text"></p>
+                    <div class="error-actions">
+                      <button class="btn-ghost error-settings" hidden><i data-lucide="settings"></i> Open Settings</button>
+                      <button class="btn-ghost error-copy"><i data-lucide="copy"></i> Copy details</button>
+                    </div>
+                  </div>
+                </div>
                 <ol class="step-list" id="step-list">
                   <li data-step="plan"><span class="step-dot"></span> Planning scenes</li>
                   <li data-step="scene"><span class="step-dot"></span> Images &amp; voice-over</li>
@@ -421,7 +431,17 @@
                 <div><h2>Building your reel</h2><p class="card-sub" id="poem-progress-label">Starting…</p></div>
               </div>
               <div class="progress-bar-track"><div class="progress-bar-fill" id="poem-progress-fill" style="width:0%"></div></div>
-              <div class="notice danger" id="poem-error" hidden><i data-lucide="triangle-alert"></i><span id="poem-error-text"></span></div>
+              <div class="error-banner" id="poem-error" hidden>
+                <span class="error-icon"><i data-lucide="circle-alert"></i></span>
+                <div class="error-body">
+                  <strong class="error-title">Could not build the reel</strong>
+                  <p class="error-text"></p>
+                  <div class="error-actions">
+                    <button class="btn-ghost error-settings" hidden><i data-lucide="settings"></i> Open Settings</button>
+                    <button class="btn-ghost error-copy"><i data-lucide="copy"></i> Copy details</button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="card" id="poem-result-card" hidden>

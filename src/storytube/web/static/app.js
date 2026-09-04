@@ -754,6 +754,34 @@ async function playVoiceSample(provider, language) {
   }
 }
 
+/* ---------------- Error banners ---------------- */
+
+const SETTINGS_HINTS = ["settings", "api key", "token", "credits", "not set", "unauthorized", "pollinations", "gemini"];
+
+function showErrorBanner(id, message) {
+  const box = $(id);
+  const text = message || "Something went wrong.";
+  box.querySelector(".error-text").textContent = text;
+  box.hidden = false;
+
+  const settingsBtn = box.querySelector(".error-settings");
+  settingsBtn.hidden = !SETTINGS_HINTS.some((hint) => text.toLowerCase().includes(hint));
+
+  if (!box.dataset.wired) {
+    box.dataset.wired = "1";
+    settingsBtn.addEventListener("click", () => switchTab("settings"));
+    box.querySelector(".error-copy").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(box.querySelector(".error-text").textContent);
+        toast("Error details copied");
+      } catch {
+        toast("Could not copy", "error");
+      }
+    });
+  }
+  refreshIcons();
+}
+
 /* ---------------- Instagram publishing ---------------- */
 
 function setupPublish() {
@@ -1577,8 +1605,7 @@ function failPoem(message) {
   $("poem-progress-fill").style.width = "100%";
   $("poem-progress-fill").classList.add("failed");
   $("poem-progress-label").textContent = "Failed";
-  $("poem-error").hidden = false;
-  $("poem-error-text").textContent = message;
+  showErrorBanner("poem-error", message);
   setPoemBusy(false);
   refreshIcons();
 }
@@ -1904,8 +1931,7 @@ async function startGeneration() {
         cardIcon.innerHTML = icon("circle-alert", 17);
         $("progress-fill").classList.add("failed");
         $("progress-label").textContent = "Generation failed";
-        $("progress-error").hidden = false;
-        $("progress-error").textContent = event.message;
+        showErrorBanner("progress-error", event.message);
         $("progress-log").textContent += "\nERROR: " + event.message + "\n";
         document.querySelector("#progress-card .log-details").open = true;
         refreshIcons();
@@ -1922,9 +1948,10 @@ async function startGeneration() {
       $("generate-btn").disabled = false;
       if ($("progress-percent").textContent !== "100%") {
         $("progress-label").textContent = "Lost connection to the server";
-        $("progress-error").hidden = false;
-        $("progress-error").textContent =
-          "The progress stream disconnected. The job may still be running \u2014 check the Outputs tab in a few minutes.";
+        showErrorBanner(
+          "progress-error",
+          "The progress stream disconnected. The job may still be running \u2014 check the Outputs tab in a few minutes."
+        );
         toast("Lost connection to the server", "error");
       }
     };
