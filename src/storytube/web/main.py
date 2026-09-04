@@ -347,6 +347,8 @@ def start_poem(payload: PoemRequest) -> dict:
         focus_x=payload.focus_x,
         focus_y=payload.focus_y,
         zoom=payload.zoom,
+        narrate=payload.narrate,
+        voice=payload.voice,
     )
     job = jobs.create_poem_job(name, "\n".join(lines), options)
     return {"job_id": job.id, "name": name, "lines": lines}

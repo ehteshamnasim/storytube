@@ -51,6 +51,8 @@ class PoemRequest(BaseModel):
     focus_x: float = 0.5
     focus_y: float = 0.5
     zoom: float = 1.0
+    narrate: bool = False
+    voice: str = ""
 
 
 class GenerateRequest(BaseModel):

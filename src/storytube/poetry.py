@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -21,8 +22,10 @@ except ImportError:  # pragma: no cover - HEIC uploads are simply rejected inste
     pass
 
 from . import config
+from .assemble import add_background_ambience, get_audio_duration, mux_audio_video
 from .bookends import build_card_clip
 from .image_gen import generate_image
+from .tts import generate_voice_over
 
 ProgressCallback = Callable[[str, str], None]
 
@@ -32,6 +35,23 @@ MAX_POEM_CHARS = 600
 MAX_POEM_LINES = 12
 MIN_BACKGROUND_EDGE = 400
 MAX_ZOOM = 3.0
+VOICE_LEAD_IN = 0.9
+VOICE_LEAD_OUT = 1.6
+
+# edge-tts is free and has a real Urdu (Pakistan) voice, which the local models lack.
+POEM_VOICES = {
+    "urdu": "ur-PK-AsadNeural",
+    "hindi": "hi-IN-MadhurNeural",
+    "hinglish": "hi-IN-MadhurNeural",
+    "english": "en-IN-PrabhatNeural",
+    "bengali": "bn-IN-BashkarNeural",
+    "punjabi": "hi-IN-MadhurNeural",
+}
+DEFAULT_POEM_VOICE = "en-IN-PrabhatNeural"
+
+
+def default_poem_voice(language: str) -> str:
+    return POEM_VOICES.get(language.strip().lower(), DEFAULT_POEM_VOICE)
 FALLBACK_HASHTAGS = (
     "#poetry #shayari #poem #poetrycommunity #writersofinstagram "
     "#poetsofinstagram #words #verse #spokenword #lines"
@@ -85,6 +105,8 @@ class PoemOptions:
     focus_x: float = 0.5
     focus_y: float = 0.5
     zoom: float = 1.0
+    narrate: bool = False
+    voice: str = ""
 
 
 @dataclass
@@ -302,6 +324,24 @@ def prepare_background(
     return out_path
 
 
+def _pad_voice(source: Path, out_path: Path, lead_in: float, total: float) -> Path:
+    """Delay the narration so it does not start on frame one, and run it to the full length."""
+    delay_ms = int(lead_in * 1000)
+    subprocess.run(
+        [
+            config.FFMPEG_BIN, "-y", "-v", "error",
+            "-i", str(source),
+            "-af", f"adelay={delay_ms}|{delay_ms},apad=whole_dur={total:.3f}",
+            "-c:a", "aac",
+            str(out_path),
+        ],
+        check=True,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+    )
+    return out_path
+
+
 def _fallback_plan(lines: list[str]) -> dict:
     return {
         "mood": "",
@@ -505,18 +545,43 @@ def generate_poem_reel(
     report("typography", "Writing the poem onto the image…")
     card = render_poem_card(background, lines, out_dir / "card.png", options.size, options.handle)
 
-    duration = min(MAX_REEL_SECONDS, max(MIN_REEL_SECONDS, len(lines) * options.seconds_per_line))
-    report("video", f"Building a {duration:.0f}s reel…")
     video_path = out_dir / "reel.mp4"
-    build_card_clip(
-        card,
-        duration,
-        video_path,
-        size=options.size,
-        music_file=options.music_file,
-        music_volume=options.music_volume,
-        motion=False,
-    )
+    voice_path: Optional[Path] = None
+    if options.narrate:
+        voice = options.voice or default_poem_voice(options.language)
+        report("voice", f"Reading the poem aloud ({voice})…")
+        voice_path = out_dir / "voice.mp3"
+        generate_voice_over("\n".join(lines), voice, voice_path)
+        spoken = get_audio_duration(voice_path)
+        duration = min(MAX_REEL_SECONDS, max(MIN_REEL_SECONDS, spoken + VOICE_LEAD_IN + VOICE_LEAD_OUT))
+    else:
+        duration = min(MAX_REEL_SECONDS, max(MIN_REEL_SECONDS, len(lines) * options.seconds_per_line))
+
+    report("video", f"Building a {duration:.0f}s reel…")
+    if voice_path is not None:
+        padded = _pad_voice(voice_path, out_dir / "voice_padded.m4a", VOICE_LEAD_IN, duration)
+        mixed = out_dir / "reel_audio.m4a"
+        add_background_ambience(
+            padded,
+            mixed,
+            duration,
+            ambience_volume=0.0,
+            music_volume=options.music_volume,
+            music_file=options.music_file,
+        )
+        silent = out_dir / "reel_silent.mp4"
+        build_card_clip(card, duration, silent, size=options.size, music_volume=0, motion=False)
+        mux_audio_video(silent, mixed, video_path)
+    else:
+        build_card_clip(
+            card,
+            duration,
+            video_path,
+            size=options.size,
+            music_file=options.music_file,
+            music_volume=options.music_volume,
+            motion=False,
+        )
 
     caption = plan["caption"].strip()
     hashtags = " ".join(dict.fromkeys(plan["hashtags"].split())).strip()
@@ -533,6 +598,8 @@ def generate_poem_reel(
         "duration_seconds": round(duration, 1),
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "own_image": own_image,
+        "narrated": bool(options.narrate),
+        "voice": (options.voice or default_poem_voice(options.language)) if options.narrate else "",
         "music_file": str(options.music_file) if options.music_file else "",
     }
     (out_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")

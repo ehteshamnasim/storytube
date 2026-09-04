@@ -14,6 +14,8 @@ const state = {
   publishTarget: null,
   insightsTarget: null,
   poemMode: "generate",
+  poemNarrate: false,
+  poemVoiceTouched: false,
   poemBackground: null,
   poemUndrawable: [],
   imageProvider: "local",
@@ -1023,8 +1025,11 @@ function renderPoemPreview() {
   const summary = [
     ["Background", state.poemMode === "upload" ? state.poemBackground?.name || "Not chosen yet" : "Generated"],
     ["Shape", shape],
+    ["Voice", state.poemNarrate ? ($("poem-voice").selectedOptions[0]?.textContent || "On") : "No voice-over"],
     ["Music", track ? titleCase(track.split("/").pop().replace(/\.[^.]+$/, "")) : "None"],
-    ["Length", lines.length ? `${Math.round(poemDuration(lines))}s` : "—"],
+    ["Length", state.poemNarrate
+      ? "follows the reading"
+      : (lines.length ? `${Math.round(poemDuration(lines))}s` : "—")],
   ];
   $("poem-summary").innerHTML = summary
     .map(([k, v]) => `<div class="summary-row"><dt>${k}</dt><dd>${escapeHtml(String(v))}</dd></div>`)
@@ -1088,18 +1093,21 @@ function gatherPoemOptions() {
     focus_x: state.poemBackground?.focusX ?? 0.5,
     focus_y: state.poemBackground?.focusY ?? 0.5,
     zoom: state.poemBackground?.zoom ?? 1,
+    narrate: state.poemNarrate === true,
+    voice: $("poem-voice").value,
   };
 }
 
 /* Reel defaults are remembered so you never retype your handle or re-pick a track. */
 const POEM_PREFS_KEY = "storytube.poem.prefs";
-const POEM_PREF_FIELDS = ["poem-language", "poem-style", "poem-size", "poem-handle", "poem-music-volume", "poem-pace", "poem-seed"];
+const POEM_PREF_FIELDS = ["poem-language", "poem-style", "poem-size", "poem-handle", "poem-music-volume", "poem-pace", "poem-seed", "poem-voice"];
 
 function savePoemPrefs() {
   const prefs = {};
   POEM_PREF_FIELDS.forEach((id) => { prefs[id] = $(id).value; });
   prefs.music = $("poem-music-browser").dataset.selected || "";
   prefs.mode = state.poemMode || "generate";
+  prefs.narrate = state.poemNarrate === true;
   try {
     localStorage.setItem(POEM_PREFS_KEY, JSON.stringify(prefs));
   } catch {
@@ -1282,6 +1290,41 @@ function clearPoemBackground() {
   renderPoemPreview();
 }
 
+function setPoemNarrate(on) {
+  state.poemNarrate = on;
+  document.querySelectorAll("#poem-voice-segmented .segment").forEach((s) =>
+    s.classList.toggle("active", (s.dataset.value === "on") === on)
+  );
+  $("poem-voice-row").hidden = !on;
+  savePoemPrefs();
+  renderPoemPreview();
+}
+
+async function previewPoemVoice() {
+  const btn = $("poem-voice-listen");
+  const audio = $("poem-voice-audio");
+  btn.disabled = true;
+  btn.innerHTML = `${icon("loader-circle", 14)} Loading…`;
+  refreshIcons();
+  try {
+    const res = await fetch("/api/voice-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "edge", voice: $("poem-voice").value, language: $("poem-language").value }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "That voice could not read this language.");
+    audio.src = data.url;
+    await audio.play();
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `${icon("volume-2", 14)} Listen`;
+    refreshIcons();
+  }
+}
+
 function setupPoetry() {
   const presets = $("poem-style-presets");
   POEM_STYLE_PRESETS.forEach(({ label, value }) => {
@@ -1316,6 +1359,21 @@ function setupPoetry() {
   document.querySelectorAll("#poem-bg-segmented .segment").forEach((seg) =>
     seg.addEventListener("click", () => setPoemMode(seg.dataset.value))
   );
+  document.querySelectorAll("#poem-voice-segmented .segment").forEach((seg) =>
+    seg.addEventListener("click", () => setPoemNarrate(seg.dataset.value === "on"))
+  );
+  $("poem-voice-listen").addEventListener("click", previewPoemVoice);
+  $("poem-language").addEventListener("change", () => {
+    // Follow the language unless the reader was deliberately chosen.
+    if (!state.poemVoiceTouched) {
+      const map = { Urdu: "ur-PK-AsadNeural", Hindi: "hi-IN-MadhurNeural", Hinglish: "hi-IN-MadhurNeural",
+                    English: "en-IN-PrabhatNeural", Bengali: "bn-IN-BashkarNeural", Punjabi: "hi-IN-MadhurNeural" };
+      const next = map[$("poem-language").value];
+      if (next) { $("poem-voice").value = next; enhanceAllSelects($("poem-voice-row")); }
+    }
+    renderPoemPreview();
+  });
+  $("poem-voice").addEventListener("change", () => { state.poemVoiceTouched = true; renderPoemPreview(); });
 
   const drop = $("poem-drop");
   drop.addEventListener("click", () => $("poem-bg-input").click());
@@ -1408,6 +1466,7 @@ function setupPoetry() {
   const prefs = loadPoemPrefs();
   // Your own photo is both the fast path and the usual case, so it leads.
   setPoemMode(prefs.mode || "upload");
+  setPoemNarrate(prefs.narrate === true);
   renderPoemPreview();
 }
 
@@ -1591,7 +1650,12 @@ async function finishPoem(name) {
 
   $("poem-result-card").hidden = false;
   $("poem-result-video").src = `${made?.video_url || `/output/${name}/reel.mp4`}?t=${Date.now()}`;
-  $("poem-result-mood").textContent = made?.description ? `Mood: ${made.description}` : "Ready to post";
+  const facts = [
+    made?.duration_seconds ? `${Math.round(made.duration_seconds)}s` : null,
+    made?.description || null,
+    made?.voice || null,
+  ].filter(Boolean);
+  $("poem-result-mood").textContent = facts.length ? facts.join(" \u00b7 ") : "Your reel is ready to post";
   $("poem-caption").value = made?.caption || "";
   $("poem-download").href = `/api/outputs/${encodeURIComponent(name)}/download`;
   $("poem-download").download = `${name}.mp4`;

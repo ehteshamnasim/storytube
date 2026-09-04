@@ -418,11 +418,41 @@
             <div class="card">
               <div class="card-head">
                 <span class="card-icon"><i data-lucide="audio-lines"></i></span>
-                <div><h2>Music</h2><p class="card-sub">Reels are watched with sound on far more than feed posts.</p></div>
+                <div><h2>Sound</h2><p class="card-sub">Reels are watched with sound on far more than feed posts.</p></div>
               </div>
-              <div class="music-browser" id="poem-music-browser"></div>
-              <button class="btn-ghost upload-btn" id="poem-music-upload-btn"><i data-lucide="upload"></i> Upload your own track</button>
-              <input type="file" id="poem-music-upload-input" accept="audio/*" hidden />
+
+              <div class="field-row">
+                <label>Voice-over</label>
+                <div class="segmented" id="poem-voice-segmented">
+                  <button class="segment active" data-value="off"><i data-lucide="volume-x"></i> Music only</button>
+                  <button class="segment" data-value="on"><i data-lucide="mic"></i> Read the poem aloud</button>
+                </div>
+              </div>
+
+              <div class="field-row" id="poem-voice-row" hidden>
+                <label for="poem-voice">Reader</label>
+                <div class="voice-row">
+                  <select id="poem-voice">
+                    <option value="ur-PK-AsadNeural">Urdu — Asad, male</option>
+                    <option value="ur-PK-UzmaNeural">Urdu — Uzma, female</option>
+                    <option value="hi-IN-MadhurNeural">Hindi — Madhur, male</option>
+                    <option value="hi-IN-SwaraNeural">Hindi — Swara, female</option>
+                    <option value="en-IN-PrabhatNeural">English (India) — Prabhat, male</option>
+                    <option value="en-IN-NeerjaNeural">English (India) — Neerja, female</option>
+                    <option value="bn-IN-BashkarNeural">Bengali — Bashkar, male</option>
+                  </select>
+                  <button class="btn-secondary" id="poem-voice-listen"><i data-lucide="volume-2"></i> Listen</button>
+                </div>
+                <div class="help-text">Free, via edge-tts. The reel length follows the reading, so pacing is ignored.</div>
+                <audio id="poem-voice-audio" hidden></audio>
+              </div>
+
+              <div class="field-row">
+                <label>Background music</label>
+                <div class="music-browser" id="poem-music-browser"></div>
+                <button class="btn-ghost upload-btn" id="poem-music-upload-btn"><i data-lucide="upload"></i> Upload your own track</button>
+                <input type="file" id="poem-music-upload-input" accept="audio/*" hidden />
+              </div>
             </div>
 
             <div class="card" id="poem-progress-card" hidden>
