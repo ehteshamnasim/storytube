@@ -21,6 +21,7 @@ from ..poetry import (
     MAX_POEM_LINES,
     MIN_BACKGROUND_EDGE,
     DELIVERY,
+    POEM_TEMPLATES,
     PoemError,
     PoemOptions,
     clean_poem,
@@ -385,7 +386,7 @@ def start_poem(payload: PoemRequest) -> dict:
         handle=payload.handle.strip(),
         seed=payload.seed,
         force_image=payload.force_image,
-        background_file=resolve_upload(payload.background_file) if payload.background_file else None,
+        background_file=resolve_poem_background(payload),
         focus_x=payload.focus_x,
         focus_y=payload.focus_y,
         zoom=payload.zoom,
@@ -611,6 +612,20 @@ def prune_uploads() -> None:
         stale.unlink(missing_ok=True)
 
 
+def resolve_poem_background(payload: "PoemRequest") -> Optional[Path]:
+    if payload.template_id:
+        template = next((t for t in POEM_TEMPLATES if t["id"] == payload.template_id), None)
+        if template is None:
+            raise HTTPException(status_code=400, detail="That template no longer exists.")
+        path = Path("assets/poem_templates") / f"{template['id']}.png"
+        if not path.is_file():
+            raise HTTPException(status_code=400, detail="That template's image is missing on disk.")
+        return path
+    if payload.background_file:
+        return resolve_upload(payload.background_file)
+    return None
+
+
 @app.post("/api/poem/background")
 async def upload_background(file: UploadFile) -> dict:
     suffix = Path(file.filename or "").suffix.lower()
@@ -692,6 +707,24 @@ async def upload_asset(file: UploadFile) -> dict:
     with dest.open("wb") as f:
         shutil.copyfileobj(file.file, f)
     return {"ok": True, "path": str(dest)}
+
+
+@app.get("/api/poem/templates")
+def poem_templates() -> dict:
+    templates_dir = Path("assets/poem_templates")
+    items = []
+    for t in POEM_TEMPLATES:
+        background = templates_dir / f"{t['id']}.png"
+        if not background.exists():
+            continue
+        items.append({
+            "id": t["id"],
+            "label": t["label"],
+            "thumbnail_url": f"/assets/poem_templates/{t['id']}_thumb.jpg",
+            "background_url": f"/assets/poem_templates/{t['id']}.png",
+            "music": t["music"],
+        })
+    return {"templates": items}
 
 
 @app.post("/api/generate")

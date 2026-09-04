@@ -61,6 +61,7 @@ class PoemRequest(BaseModel):
     seed: int = 0
     force_image: bool = False
     background_file: Optional[str] = None
+    template_id: str = ""
     focus_x: float = 0.5
     focus_y: float = 0.5
     zoom: float = 1.0

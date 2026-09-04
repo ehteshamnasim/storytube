@@ -48,6 +48,33 @@ DELIVERY = {
 }
 DEFAULT_DELIVERY = "recitation"
 
+# Pre-rendered backgrounds paired with a fitting track, so a reel needs no image-gen wait at
+# all: pick or shuffle a template, write the poem, done. Backgrounds live in assets/poem_templates/
+# and are served through the existing /assets static mount.
+POEM_TEMPLATES = [
+    {"id": "rain_dusk", "label": "Rain & Dusk", "music": "ambient_reflective.mp3"},
+    {"id": "desert_night", "label": "Desert Night", "music": "arabic_desert_oud.mp3"},
+    {"id": "old_delhi", "label": "Old Delhi Lane", "music": "bineleyas-indian-classical-flute-amp-tabla-mystcial-fusion-149963.mp3"},
+    {"id": "misty_hills", "label": "Misty Hills", "music": "piano_gentle.mp3"},
+    {"id": "empty_room", "label": "Empty Room", "music": "piano_emotional.mp3"},
+    {"id": "ocean_dark", "label": "Ocean Dark", "music": "ambient_documentary.mp3"},
+    {"id": "candlelight", "label": "Candlelight", "music": "piano_emotional.mp3"},
+    {"id": "snowfall", "label": "Snowfall Window", "music": "piano_gentle.mp3"},
+    {"id": "autumn_path", "label": "Autumn Path", "music": "cinematic_calm.mp3"},
+    {"id": "rooftop_night", "label": "Rooftop Night", "music": "cinematic_drama.mp3"},
+    {"id": "library", "label": "Old Library", "music": "ambient_reflective.mp3"},
+    {"id": "train_window", "label": "Train Window", "music": "cinematic_wonder.mp3"},
+    {"id": "courtyard", "label": "Moonlit Courtyard", "music": "indian_sitar_calm.mp3"},
+    {"id": "village_well", "label": "Village Well", "music": "indian_traditional.mp3"},
+    {"id": "mountain_sunrise", "label": "Mountain Sunrise", "music": "cinematic_uplift.mp3"},
+    {"id": "old_letters", "label": "Old Letters", "music": "piano_emotional.mp3"},
+    {"id": "empty_swing", "label": "Empty Swing", "music": "woh_tera_pyar.mp3"},
+    {"id": "riverbank", "label": "Riverbank Dusk", "music": "naulo_suruwat.mp3"},
+    {"id": "bazaar_lanterns", "label": "Bazaar Lanterns", "music": "indian_traditional.mp3"},
+    {"id": "stormy_sky", "label": "Stormy Sky", "music": "cinematic_tension.mp3"},
+]
+POEM_TEMPLATES_DIR = Path("assets/poem_templates")
+
 # edge-tts is free and has a real Urdu (Pakistan) voice, which the local models lack.
 POEM_VOICES = {
     "urdu": "ur-PK-AsadNeural",

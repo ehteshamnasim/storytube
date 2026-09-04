@@ -482,6 +482,7 @@ function setupStorySelect() {
 async function loadMusicAssets(selectedPath) {
   const res = await fetch("/api/assets");
   const data = await res.json();
+  state.musicAssets = data.assets;
   const select = $("opt-music-preset");
   select.innerHTML = '<option value="">No music track</option>';
   data.assets.forEach((filename) => {
@@ -1129,8 +1130,15 @@ function renderPoemPreview() {
 
   const shape = $("poem-size").options[$("poem-size").selectedIndex]?.textContent || "";
   const track = $("poem-music-browser").dataset.selected;
+  const templateLabel = state.poemMode === "template"
+    ? (state.poemTemplates || []).find((t) => t.id === state.poemTemplateId)?.label || "Not chosen yet"
+    : null;
   const summary = [
-    ["Background", state.poemMode === "upload" ? state.poemBackground?.name || "Not chosen yet" : "Generated"],
+    ["Background", state.poemMode === "upload"
+      ? state.poemBackground?.name || "Not chosen yet"
+      : state.poemMode === "template"
+        ? templateLabel
+        : "Generated"],
     ["Shape", shape],
     ["Voice", state.poemNarrate ? ($("poem-voice").selectedOptions[0]?.textContent || "On") : "No voice-over"],
     ["Music", track ? titleCase(track.split("/").pop().replace(/\.[^.]+$/, "")) : "None"],
@@ -1146,7 +1154,7 @@ function renderPoemPreview() {
 function poemWarnings(lines) {
   const warnings = [];
   const chars = $("poem-text").value.length;
-  const usingOwnImage = state.poemMode === "upload";
+  const usingOwnImage = hasInstantBackground();
 
   if (!lines.length) warnings.push(["danger", "Write a line or two of poetry first."]);
   if (chars > POEM_LIMITS.max_chars) {
@@ -1155,8 +1163,11 @@ function poemWarnings(lines) {
   if (lines.length > POEM_LIMITS.max_lines) {
     warnings.push(["danger", `That is ${lines.length} lines. Keep it to ${POEM_LIMITS.max_lines} or fewer.`]);
   }
-  if (usingOwnImage && !state.poemBackground) {
-    warnings.push(["danger", "Choose a photo, or switch back to Generate."]);
+  if (state.poemMode === "upload" && !state.poemBackground) {
+    warnings.push(["danger", "Choose a photo, or switch to Templates or Generate."]);
+  }
+  if (state.poemMode === "template" && !state.poemTemplateId) {
+    warnings.push(["danger", "Pick a template, or hit Shuffle."]);
   }
   const longest = lines.reduce((a, b) => (b.length > a.length ? b : a), "");
   if (longest.length > 48) {
@@ -1208,6 +1219,7 @@ function gatherPoemOptions() {
     handle: $("poem-handle").value.trim(),
     seed: parseInt($("poem-seed").value, 10),
     background_file: state.poemBackground?.path || null,
+    template_id: state.poemMode === "template" ? (state.poemTemplateId || null) : null,
     focus_x: state.poemBackground?.focusX ?? 0.5,
     focus_y: state.poemBackground?.focusY ?? 0.5,
     zoom: state.poemBackground?.zoom ?? 1,
@@ -1227,6 +1239,7 @@ function savePoemPrefs() {
   POEM_PREF_FIELDS.forEach((id) => { prefs[id] = $(id).value; });
   prefs.music = $("poem-music-browser").dataset.selected || "";
   prefs.mode = state.poemMode || "generate";
+  prefs.templateId = state.poemTemplateId || "";
   prefs.narrate = state.poemNarrate === true;
   prefs.delivery = state.poemDelivery || "recitation";
   prefs.provider = state.poemProvider || "edge";
@@ -1267,8 +1280,68 @@ function setPoemMode(mode) {
   );
   $("poem-bg-upload").hidden = mode !== "upload";
   $("poem-bg-generate").hidden = mode !== "generate";
+  $("poem-bg-templates").hidden = mode !== "template";
+  if (mode === "template" && !state.poemTemplates) loadPoemTemplates();
   savePoemPrefs();
   renderPoemPreview();
+}
+
+function hasInstantBackground() {
+  return state.poemMode === "upload" || (state.poemMode === "template" && !!state.poemTemplateId);
+}
+
+async function loadPoemTemplates() {
+  const grid = $("poem-templates-grid");
+  grid.innerHTML = `<span class="help-text">Loading templates\u2026</span>`;
+  try {
+    const res = await fetch("/api/poem/templates");
+    const data = await res.json();
+    state.poemTemplates = data.templates || [];
+    renderPoemTemplates();
+    renderPoemPreview();
+  } catch {
+    grid.innerHTML = `<span class="help-text">Could not load templates.</span>`;
+  }
+}
+
+function renderPoemTemplates() {
+  const grid = $("poem-templates-grid");
+  grid.innerHTML = "";
+  (state.poemTemplates || []).forEach((t) => {
+    const card = document.createElement("div");
+    card.className = t.id === state.poemTemplateId ? "template-card selected" : "template-card";
+    card.innerHTML = `
+      <img src="${t.thumbnail_url}" alt="${escapeHtml(t.label)}" loading="lazy" />
+      <span class="template-label">${escapeHtml(t.label)}</span>
+      <span class="template-check">${icon("check", 12)}</span>`;
+    card.addEventListener("click", () => selectPoemTemplate(t.id));
+    grid.appendChild(card);
+  });
+  refreshIcons();
+}
+
+function selectPoemTemplate(id) {
+  const template = (state.poemTemplates || []).find((t) => t.id === id);
+  if (!template) return;
+  state.poemTemplateId = id;
+  renderPoemTemplates();
+
+  const musicPath = `assets/${template.music}`;
+  if ((state.musicAssets || []).includes(template.music)) {
+    $("poem-music-browser").dataset.selected = musicPath;
+    renderPoemMusic(state.musicAssets);
+  }
+  $("poem-template-note").textContent = `${template.label} \u2014 paired with ${titleCase(template.music.replace(/\.[^.]+$/, ""))}.`;
+  savePoemPrefs();
+  renderPoemPreview();
+}
+
+function shufflePoemTemplate() {
+  const templates = state.poemTemplates || [];
+  if (!templates.length) return;
+  const others = templates.filter((t) => t.id !== state.poemTemplateId);
+  const pick = (others.length ? others : templates)[Math.floor(Math.random() * (others.length ? others.length : templates.length))];
+  selectPoemTemplate(pick.id);
 }
 
 /* Mirrors prepare_background(): scale to cover, multiply by zoom, then offset the
@@ -1606,6 +1679,7 @@ function setupPoetry() {
   document.querySelectorAll("#poem-bg-segmented .segment").forEach((seg) =>
     seg.addEventListener("click", () => setPoemMode(seg.dataset.value))
   );
+  $("poem-template-shuffle").addEventListener("click", shufflePoemTemplate);
   document.querySelectorAll("#poem-voice-segmented .segment").forEach((seg) =>
     seg.addEventListener("click", () => setPoemNarrate(seg.dataset.value === "on"))
   );
@@ -1727,6 +1801,7 @@ function setupPoetry() {
   });
 
   const prefs = loadPoemPrefs();
+  state.poemTemplateId = prefs.templateId || null;
   // Your own photo is both the fast path and the usual case, so it leads.
   setPoemMode(prefs.mode || "upload");
   setPoemDelivery(prefs.delivery || "recitation");
@@ -1808,10 +1883,15 @@ async function openPoemReview() {
     : `<span class="poem-preview-empty">Nothing to draw yet</span>`;
 
   const opts = gatherPoemOptions();
-  const usingOwnImage = state.poemMode === "upload";
+  const usingOwnImage = hasInstantBackground();
+  const backgroundLabel = state.poemMode === "upload"
+    ? state.poemBackground?.name || "Your photo"
+    : state.poemMode === "template"
+      ? (state.poemTemplates || []).find((t) => t.id === state.poemTemplateId)?.label || "Template"
+      : "Generated by FLUX";
   const rows = [
     ["Language", opts.language],
-    ["Background", usingOwnImage ? state.poemBackground?.name || "Your photo" : "Generated by FLUX"],
+    ["Background", backgroundLabel],
     ["Shape", $("poem-size").options[$("poem-size").selectedIndex].textContent],
     ["Music", opts.music_file ? `${titleCase(opts.music_file.split("/").pop().replace(/\.[^.]+$/, ""))} at ${Math.round(opts.music_volume * 100)}%` : "None"],
     ["Handle", opts.handle || "None"],
@@ -1823,7 +1903,7 @@ async function openPoemReview() {
 
   if (usingOwnImage) {
     $("poem-review-estimate").innerHTML =
-      `${icon("zap", 15)}<span>Your own photo, so there is no image to draw. About 20 seconds.</span>`;
+      `${icon("zap", 15)}<span>${state.poemMode === "template" ? "A ready-made background, so" : "Your own photo, so"} there is no image to draw. About 20 seconds.</span>`;
   } else {
     const [w, h] = opts.size.split("x").map(Number);
     const minutes = Math.max(1, Math.round((60 + 100 * ((w * h) / (1920 * 1080)) + 20) / 60));

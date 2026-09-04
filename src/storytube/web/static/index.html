@@ -385,8 +385,9 @@
                 <div><h2>Background</h2><p class="card-sub">Your own photo is instant. Generating one takes a few minutes.</p></div>
               </div>
 
-              <div class="segmented" id="poem-bg-segmented">
+              <div class="segmented three" id="poem-bg-segmented">
                 <button class="segment active" data-value="upload"><i data-lucide="upload"></i> My own photo<span class="segment-note">seconds</span></button>
+                <button class="segment" data-value="template"><i data-lucide="shuffle"></i> Templates<span class="segment-note">instant</span></button>
                 <button class="segment" data-value="generate"><i data-lucide="sparkles"></i> Generate<span class="segment-note">a few minutes</span></button>
               </div>
 
@@ -413,6 +414,14 @@
               <div id="poem-bg-generate" hidden>
                 <div class="chip-row" id="poem-style-presets"></div>
                 <div class="help-text">Fine-tune the wording and seed under Advanced.</div>
+              </div>
+
+              <div id="poem-bg-templates" hidden>
+                <div class="templates-toolbar">
+                  <span class="help-text" id="poem-template-note">Pick a background — its music is chosen for you, but you can still change it below.</span>
+                  <button class="btn-secondary" id="poem-template-shuffle"><i data-lucide="shuffle"></i> Shuffle</button>
+                </div>
+                <div class="templates-grid" id="poem-templates-grid"></div>
               </div>
             </div>
 
