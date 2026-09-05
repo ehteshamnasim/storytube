@@ -22,6 +22,7 @@ from ..poetry import (
     MIN_BACKGROUND_EDGE,
     DELIVERY,
     POEM_TEMPLATES,
+    POET_AVATARS,
     PoemError,
     PoemOptions,
     clean_poem,
@@ -395,6 +396,7 @@ def start_poem(payload: PoemRequest) -> dict:
         delivery=payload.delivery,
         voice_provider=payload.voice_provider,
         text_scale=payload.text_scale,
+        avatar_id=payload.avatar_id,
     )
     job = jobs.create_poem_job(name, "\n".join(lines), options)
     return {"job_id": job.id, "name": name, "lines": lines}
@@ -726,6 +728,17 @@ def poem_templates() -> dict:
             "music": t["music"],
         })
     return {"templates": items}
+
+
+@app.get("/api/poem/avatars")
+def poem_avatars() -> dict:
+    avatars_dir = Path("assets/poets")
+    items = []
+    for a in POET_AVATARS:
+        path = avatars_dir / a["file"]
+        if path.is_file():
+            items.append({"id": a["id"], "label": a["label"], "image_url": f"/assets/poets/{a['file']}"})
+    return {"avatars": items}
 
 
 @app.post("/api/generate")

@@ -70,6 +70,7 @@ class PoemRequest(BaseModel):
     delivery: str = "recitation"
     voice_provider: str = "edge"
     text_scale: float = 1.0
+    avatar_id: str = ""
 
 
 class GenerateRequest(BaseModel):

@@ -1228,12 +1228,13 @@ function gatherPoemOptions() {
     delivery: state.poemDelivery || "recitation",
     voice_provider: state.poemProvider || "edge",
     text_scale: parseFloat($("poem-text-scale").value),
+    avatar_id: $("poem-avatar").value,
   };
 }
 
 /* Reel defaults are remembered so you never retype your handle or re-pick a track. */
 const POEM_PREFS_KEY = "storytube.poem.prefs";
-const POEM_PREF_FIELDS = ["poem-language", "poem-style", "poem-size", "poem-handle", "poem-music-volume", "poem-pace", "poem-seed", "poem-voice", "poem-text-scale"];
+const POEM_PREF_FIELDS = ["poem-language", "poem-style", "poem-size", "poem-handle", "poem-music-volume", "poem-pace", "poem-seed", "poem-voice", "poem-text-scale", "poem-avatar"];
 
 function savePoemPrefs() {
   const prefs = {};
@@ -1647,7 +1648,21 @@ async function previewPoemVoice() {
   }
 }
 
+async function loadPoemAvatars() {
+  const select = $("poem-avatar");
+  try {
+    const res = await fetch("/api/poem/avatars");
+    const data = await res.json();
+    (data.avatars || []).forEach((a) => {
+      select.add(new Option(`Someone else's \u2014 ${a.label}`, a.id));
+    });
+  } catch {
+    /* No avatars available; the "My own words" default still works. */
+  }
+}
+
 function setupPoetry() {
+  loadPoemAvatars();
   const presets = $("poem-style-presets");
   POEM_STYLE_PRESETS.forEach(({ label, value }) => {
     const chip = document.createElement("button");

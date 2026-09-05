@@ -75,6 +75,15 @@ POEM_TEMPLATES = [
 ]
 POEM_TEMPLATES_DIR = Path("assets/poem_templates")
 
+# An optional small "attributed to" tag for when you are sharing someone else's poem,
+# not your own - a portrait plus name credited near the top, same idea as a printed
+# quote card crediting its author. Off by default; add more poets by adding an entry
+# and dropping a square portrait into assets/poets/.
+POET_AVATARS = [
+    {"id": "jaun_elia", "label": "Jaun Elia", "file": "jaun_elia_avatar.png"},
+]
+POET_AVATARS_DIR = Path("assets/poets")
+
 # edge-tts is free and has a real Urdu (Pakistan) voice, which the local models lack.
 POEM_VOICES = {
     "urdu": "ur-PK-AsadNeural",
@@ -147,6 +156,7 @@ class PoemOptions:
     delivery: str = DEFAULT_DELIVERY
     voice_provider: str = "edge"
     text_scale: float = 1.0
+    avatar_id: str = ""
 
 
 @dataclass
@@ -530,6 +540,38 @@ def _layout(
     return font, rendered, int(final_size * spacing)
 
 
+def _draw_poet_credit(canvas: Image.Image, avatar_file: Path, poet_name: str, width: int, height: int) -> Image.Image:
+    """A small 'shared from' credit near the top: portrait, poet's name, a soft pill behind
+    both so it stays legible over any background. For sharing someone else's poem, not yours."""
+    avatar_size = int(height * 0.052)
+    portrait = Image.open(avatar_file).convert("RGBA").resize((avatar_size, avatar_size), Image.LANCZOS)
+
+    label_font = _load_font("latin", int(height * 0.0105), "shared from")
+    name_font = _load_font("latin", int(height * 0.019), poet_name)
+    measure = ImageDraw.Draw(canvas)
+    name_width = measure.textlength(poet_name, font=name_font)
+    label_width = measure.textlength("shared from", font=label_font)
+    text_width = max(name_width, label_width)
+
+    gap = int(width * 0.025)
+    total_width = avatar_size + gap + text_width
+    x = (width - total_width) / 2
+    y = int(height * 0.045)
+
+    pad_x, pad_y = int(width * 0.035), int(height * 0.014)
+    pill_box = [x - pad_x, y - pad_y, x + total_width + pad_x, y + avatar_size + pad_y]
+    pill = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(pill).rounded_rectangle(pill_box, radius=(pill_box[3] - pill_box[1]) / 2, fill=(14, 12, 11, 150))
+    canvas = Image.alpha_composite(canvas, pill.filter(ImageFilter.GaussianBlur(width * 0.002)))
+
+    canvas.paste(portrait, (int(x), int(y)), portrait)
+    draw = ImageDraw.Draw(canvas)
+    text_x = x + avatar_size + gap
+    draw.text((text_x, y - height * 0.004), "shared from", font=label_font, fill=(190, 178, 162))
+    draw.text((text_x, y + avatar_size * 0.34), poet_name, font=name_font, fill=(250, 247, 240))
+    return canvas
+
+
 def render_poem_card(
     background: Path,
     lines: list[str],
@@ -537,6 +579,8 @@ def render_poem_card(
     size: str = "1080x1920",
     handle: str = "",
     text_scale: float = 1.0,
+    avatar_file: Optional[Path] = None,
+    poet_name: str = "",
 ) -> Path:
     width, height = (int(p) for p in size.split("x"))
 
@@ -593,6 +637,9 @@ def render_poem_card(
             font=handle_font,
             fill=(226, 214, 196),
         )
+
+    if avatar_file and poet_name and avatar_file.is_file():
+        canvas = _draw_poet_credit(canvas, avatar_file, poet_name, width, height)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     canvas.convert("RGB").save(out_path, quality=95)
@@ -652,8 +699,16 @@ def generate_poem_reel(
         )
 
     report("typography", "Writing the poem onto the image…")
+    avatar_file = None
+    poet_name = ""
+    if options.avatar_id:
+        poet = next((p for p in POET_AVATARS if p["id"] == options.avatar_id), None)
+        if poet:
+            avatar_file = POET_AVATARS_DIR / poet["file"]
+            poet_name = poet["label"]
     card = render_poem_card(
-        background, lines, out_dir / "card.png", options.size, options.handle, options.text_scale
+        background, lines, out_dir / "card.png", options.size, options.handle, options.text_scale,
+        avatar_file, poet_name,
     )
 
     video_path = out_dir / "reel.mp4"
