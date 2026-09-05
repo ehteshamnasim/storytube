@@ -394,6 +394,7 @@ def start_poem(payload: PoemRequest) -> dict:
         voice=payload.voice,
         delivery=payload.delivery,
         voice_provider=payload.voice_provider,
+        text_scale=payload.text_scale,
     )
     job = jobs.create_poem_job(name, "\n".join(lines), options)
     return {"job_id": job.id, "name": name, "lines": lines}

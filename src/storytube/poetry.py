@@ -52,7 +52,7 @@ DEFAULT_DELIVERY = "recitation"
 # all: pick or shuffle a template, write the poem, done. Backgrounds live in assets/poem_templates/
 # and are served through the existing /assets static mount.
 POEM_TEMPLATES = [
-    {"id": "rain_dusk", "label": "Rain & Dusk", "music": "ambient_reflective.mp3"},
+    {"id": "rain_dusk", "label": "Rain & Dusk", "music": "jaani-door-gaye.mp3"},
     {"id": "desert_night", "label": "Desert Night", "music": "arabic_desert_oud.mp3"},
     {"id": "old_delhi", "label": "Old Delhi Lane", "music": "bineleyas-indian-classical-flute-amp-tabla-mystcial-fusion-149963.mp3"},
     {"id": "misty_hills", "label": "Misty Hills", "music": "piano_gentle.mp3"},
@@ -146,6 +146,7 @@ class PoemOptions:
     voice: str = ""
     delivery: str = DEFAULT_DELIVERY
     voice_provider: str = "edge"
+    text_scale: float = 1.0
 
 
 @dataclass
@@ -479,13 +480,22 @@ def _layout(
     script: str,
     width: int,
     height: int,
+    text_scale: float = 1.0,
 ) -> tuple[ImageFont.FreeTypeFont, list[str], int]:
-    """Largest font size that still fits, preferring to keep the poet's own line breaks."""
+    """Largest font size that still fits, preferring to keep the poet's own line breaks.
+
+    text_scale then nudges that auto-fit result bigger or smaller. It has to act on the
+    *result*, not the search range: for a long line, width is what actually caps the size,
+    so widening the search range alone changes nothing - the widest-fitting size wins either
+    way. Scaling it up re-wraps at the new size instead, even if that means more lines.
+    """
     max_text_width = int(width * 0.80)
     max_text_height = int(height * 0.52)
     spacing = LINE_SPACING.get(script, 1.6)
     sample = " ".join(lines)
     sizes = range(int(height * 0.055), int(height * 0.016), -2)
+
+    natural_size = None
 
     # Pass one: no wrapping at all. Breaking a verse mid-line destroys its metre.
     for size in sizes:
@@ -494,24 +504,30 @@ def _layout(
         if line_height * len(lines) > max_text_height:
             continue
         if all(draw.textlength(line, font=font) <= max_text_width for line in lines):
-            return font, list(lines), line_height
+            natural_size = size
+            break
 
     # Pass two: a line is too long to ever fit, so wrapping is unavoidable.
-    for size in sizes:
-        font = _load_font(script, size, sample)
-        rendered: list[str] = []
-        for line in lines:
-            rendered.extend(_wrap_line(draw, line, font, max_text_width))
-        line_height = int(size * spacing)
-        if line_height * len(rendered) <= max_text_height:
-            return font, rendered, line_height
+    if natural_size is None:
+        for size in sizes:
+            font = _load_font(script, size, sample)
+            rendered: list[str] = []
+            for line in lines:
+                rendered.extend(_wrap_line(draw, line, font, max_text_width))
+            line_height = int(size * spacing)
+            if line_height * len(rendered) <= max_text_height:
+                natural_size = size
+                break
 
-    size = int(height * 0.016)
-    font = _load_font(script, size, sample)
+    if natural_size is None:
+        natural_size = int(height * 0.016)
+
+    final_size = natural_size if text_scale == 1.0 else max(6, min(int(height * 0.09), round(natural_size * text_scale)))
+    font = _load_font(script, final_size, sample)
     rendered = []
     for line in lines:
         rendered.extend(_wrap_line(draw, line, font, max_text_width))
-    return font, rendered, int(size * spacing)
+    return font, rendered, int(final_size * spacing)
 
 
 def render_poem_card(
@@ -520,6 +536,7 @@ def render_poem_card(
     out_path: Path,
     size: str = "1080x1920",
     handle: str = "",
+    text_scale: float = 1.0,
 ) -> Path:
     width, height = (int(p) for p in size.split("x"))
 
@@ -535,7 +552,7 @@ def render_poem_card(
     lines = strip_undrawable(lines)
     script = _script_of(" ".join(lines))
     measure = ImageDraw.Draw(canvas)
-    font, rendered, line_height = _layout(measure, lines, script, width, height)
+    font, rendered, line_height = _layout(measure, lines, script, width, height, text_scale)
 
     block_height = line_height * len(rendered)
     block_top = (height - block_height) / 2
@@ -635,7 +652,9 @@ def generate_poem_reel(
         )
 
     report("typography", "Writing the poem onto the image…")
-    card = render_poem_card(background, lines, out_dir / "card.png", options.size, options.handle)
+    card = render_poem_card(
+        background, lines, out_dir / "card.png", options.size, options.handle, options.text_scale
+    )
 
     video_path = out_dir / "reel.mp4"
     voice_path: Optional[Path] = None

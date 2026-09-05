@@ -1227,12 +1227,13 @@ function gatherPoemOptions() {
     voice: $("poem-voice").value,
     delivery: state.poemDelivery || "recitation",
     voice_provider: state.poemProvider || "edge",
+    text_scale: parseFloat($("poem-text-scale").value),
   };
 }
 
 /* Reel defaults are remembered so you never retype your handle or re-pick a track. */
 const POEM_PREFS_KEY = "storytube.poem.prefs";
-const POEM_PREF_FIELDS = ["poem-language", "poem-style", "poem-size", "poem-handle", "poem-music-volume", "poem-pace", "poem-seed", "poem-voice"];
+const POEM_PREF_FIELDS = ["poem-language", "poem-style", "poem-size", "poem-handle", "poem-music-volume", "poem-pace", "poem-seed", "poem-voice", "poem-text-scale"];
 
 function savePoemPrefs() {
   const prefs = {};
@@ -1270,6 +1271,7 @@ function loadPoemPrefs() {
   $("poem-music-out").textContent = `${Math.round($("poem-music-volume").value * 100)}%`;
   $("poem-pace-out").textContent = `${Number($("poem-pace").value).toFixed(1)}s`;
   $("poem-seed-out").textContent = $("poem-seed").value;
+  $("poem-text-scale-out").textContent = `${Math.round($("poem-text-scale").value * 100)}%`;
   return prefs;
 }
 
@@ -1671,6 +1673,9 @@ function setupPoetry() {
   });
   $("poem-music-volume").addEventListener("input", (e) => {
     $("poem-music-out").textContent = Number(e.target.value) === 0 ? "Off" : `${Math.round(e.target.value * 100)}%`;
+  });
+  $("poem-text-scale").addEventListener("input", (e) => {
+    $("poem-text-scale-out").textContent = `${Math.round(e.target.value * 100)}%`;
   });
   $("poem-seed").addEventListener("input", (e) => {
     $("poem-seed-out").textContent = e.target.value;

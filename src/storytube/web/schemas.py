@@ -61,7 +61,7 @@ class PoemRequest(BaseModel):
     seed: int = 0
     force_image: bool = False
     background_file: Optional[str] = None
-    template_id: str = ""
+    template_id: Optional[str] = None
     focus_x: float = 0.5
     focus_y: float = 0.5
     zoom: float = 1.0
@@ -69,6 +69,7 @@ class PoemRequest(BaseModel):
     voice: str = ""
     delivery: str = "recitation"
     voice_provider: str = "edge"
+    text_scale: float = 1.0
 
 
 class GenerateRequest(BaseModel):
