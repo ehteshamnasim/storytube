@@ -540,9 +540,12 @@ def _layout(
     return font, rendered, int(final_size * spacing)
 
 
-def _draw_poet_credit(canvas: Image.Image, avatar_file: Path, poet_name: str, width: int, height: int) -> Image.Image:
-    """A small 'shared from' credit near the top: portrait, poet's name, a soft pill behind
-    both so it stays legible over any background. For sharing someone else's poem, not yours."""
+def _draw_poet_credit(
+    canvas: Image.Image, avatar_file: Path, poet_name: str, left_x: float, bottom_y: float, width: int, height: int
+) -> Image.Image:
+    """A small 'shared from' credit sitting just above the poem, starting from the same left
+    edge the poem's own first line starts from - not centered, so it reads as a caption for
+    the words below it rather than a banner. A soft pill keeps it legible over any image."""
     avatar_size = int(height * 0.052)
     portrait = Image.open(avatar_file).convert("RGBA").resize((avatar_size, avatar_size), Image.LANCZOS)
 
@@ -555,10 +558,11 @@ def _draw_poet_credit(canvas: Image.Image, avatar_file: Path, poet_name: str, wi
 
     gap = int(width * 0.025)
     total_width = avatar_size + gap + text_width
-    x = (width - total_width) / 2
-    y = int(height * 0.045)
-
     pad_x, pad_y = int(width * 0.035), int(height * 0.014)
+
+    x = min(left_x, width - total_width - pad_x)
+    y = max(int(height * 0.035), int(bottom_y - avatar_size - pad_y * 2 - height * 0.02))
+
     pill_box = [x - pad_x, y - pad_y, x + total_width + pad_x, y + avatar_size + pad_y]
     pill = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
     ImageDraw.Draw(pill).rounded_rectangle(pill_box, radius=(pill_box[3] - pill_box[1]) / 2, fill=(14, 12, 11, 150))
@@ -639,7 +643,10 @@ def render_poem_card(
         )
 
     if avatar_file and poet_name and avatar_file.is_file():
-        canvas = _draw_poet_credit(canvas, avatar_file, poet_name, width, height)
+        first_line = rendered[0] if rendered else ""
+        first_line_width = draw.textlength(first_line, font=font)
+        first_line_x = (width - first_line_width) / 2
+        canvas = _draw_poet_credit(canvas, avatar_file, poet_name, first_line_x, block_top, width, height)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     canvas.convert("RGB").save(out_path, quality=95)
