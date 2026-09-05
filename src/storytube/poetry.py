@@ -565,7 +565,7 @@ def _draw_poet_credit(
 
     pill_box = [x - pad_x, y - pad_y, x + total_width + pad_x, y + avatar_size + pad_y]
     pill = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-    ImageDraw.Draw(pill).rounded_rectangle(pill_box, radius=(pill_box[3] - pill_box[1]) / 2, fill=(14, 12, 11, 150))
+    ImageDraw.Draw(pill).rounded_rectangle(pill_box, radius=int(height * 0.012), fill=(46, 42, 38, 130))
     canvas = Image.alpha_composite(canvas, pill.filter(ImageFilter.GaussianBlur(width * 0.002)))
 
     canvas.paste(portrait, (int(x), int(y)), portrait)
