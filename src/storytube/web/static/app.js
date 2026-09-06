@@ -1305,9 +1305,9 @@ function loadPoemPrefs() {
 
 function updatePoemLinesPerSegmentOut() {
   const value = parseInt($("poem-lines-per-segment").value, 10);
-  $("poem-lines-per-segment-out").textContent = value === 0 ? "All at once" : String(value);
+  $("poem-lines-per-segment-out").textContent = value === 0 ? "Off" : `${value} lines`;
   $("poem-lines-per-segment-hint").textContent = value === 0
-    ? "The whole poem shows at once, the way it always used to."
+    ? "Off by default: the whole poem shows at once. Drag above 0 to reveal it a few lines at a time instead."
     : `The poem reveals in groups of ${value} line${value === 1 ? "" : "s"}, one after another.`;
 }
 

@@ -75,7 +75,7 @@ class PoemRequest(BaseModel):
     voice_provider: str = "edge"
     text_scale: float = 1.0
     avatar_id: str = ""
-    lines_per_segment: int = 2
+    lines_per_segment: int = 0
     transition: str = "cut"
     transition_seconds: float = 0.5
 
