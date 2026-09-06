@@ -1286,6 +1286,19 @@ function loadPoemPrefs() {
   POEM_PREF_FIELDS.forEach((id) => {
     if (prefs[id] !== undefined && $(id)) $(id).value = prefs[id];
   });
+  // The reveal-lines feature shipped defaulting to on, then was switched to off. Anyone
+  // who already had a value saved from that window gets forced back to off exactly once,
+  // so the "off by default" fix actually reaches browsers that tried it earlier.
+  const REVEAL_RESET_KEY = "storytube.poem.revealResetDone";
+  if (!localStorage.getItem(REVEAL_RESET_KEY)) {
+    $("poem-lines-per-segment").value = "0";
+    prefs.transition = "cut";
+    try {
+      localStorage.setItem(REVEAL_RESET_KEY, "1");
+    } catch {
+      /* private mode or full quota; the reset simply will not stick */
+    }
+  }
   // The reader list is built from the poem's script, so it has no options to select yet.
   syncPoemReaders();
   const savedVoice = prefs["poem-voice"];
@@ -1302,6 +1315,7 @@ function loadPoemPrefs() {
   setPoemTransition(prefs.transition || "cut");
   return prefs;
 }
+
 
 function updatePoemLinesPerSegmentOut() {
   const value = parseInt($("poem-lines-per-segment").value, 10);
