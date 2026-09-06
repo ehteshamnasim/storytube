@@ -321,8 +321,13 @@
                     <p class="card-sub">Ready to download and upload.</p>
                   </div>
                 </div>
+                <div class="notice warn" id="result-draft-notice">
+                  <i data-lucide="circle-alert"></i>
+                  <span>Not saved yet. Leaving without saving deletes this video.</span>
+                </div>
                 <video id="result-video" controls></video>
                 <div class="output-actions">
+                  <button class="btn-primary" id="result-save"><i data-lucide="bookmark"></i> Save</button>
                   <a class="btn-secondary" id="result-download" download><i data-lucide="download"></i> Download</a>
                   <button class="btn-secondary" id="result-publish"><i data-lucide="camera"></i> Post to Instagram</button>
                   <button class="btn-secondary" id="result-publish-yt"><i data-lucide="monitor-play"></i> Post as YouTube Short</button>
@@ -496,6 +501,10 @@
                 <span class="card-icon"><i data-lucide="circle-check"></i></span>
                 <div><h2>Ready to post</h2><p class="card-sub" id="poem-result-mood">—</p></div>
               </div>
+              <div class="notice warn" id="poem-draft-notice">
+                <i data-lucide="circle-alert"></i>
+                <span>Not saved yet. Leaving without saving deletes this reel.</span>
+              </div>
               <div class="poem-result">
                 <div class="poem-result-media">
                   <div class="label-row"><label>Reel</label><span class="mini-note" id="poem-result-shape"></span></div>
@@ -508,10 +517,11 @@
                 </div>
               </div>
               <div class="page-actions">
+                <button class="btn-primary" id="poem-save"><i data-lucide="bookmark"></i> Save</button>
                 <a class="btn-secondary" id="poem-download" download><i data-lucide="download"></i> Download reel</a>
                 <button class="btn-secondary" id="poem-redraw"><i data-lucide="refresh-cw"></i> Try another image</button>
-                <button class="btn-primary" id="poem-publish"><i data-lucide="camera"></i> Post to Instagram</button>
-                <button class="btn-primary" id="poem-publish-yt"><i data-lucide="monitor-play"></i> Post as YouTube Short</button>
+                <button class="btn-secondary" id="poem-publish"><i data-lucide="camera"></i> Post to Instagram</button>
+                <button class="btn-secondary" id="poem-publish-yt"><i data-lucide="monitor-play"></i> Post as YouTube Short</button>
               </div>
               <div class="page-actions page-actions-secondary">
                 <button class="btn-ghost" id="poem-clear"><i data-lucide="eraser"></i> Start a new reel</button>
@@ -544,9 +554,19 @@
             </div>
           </div>
           <div class="page-header-actions">
+            <button class="btn-ghost" id="outputs-select-toggle"><i data-lucide="square-check"></i> Select</button>
             <button class="btn-ghost" id="outputs-refresh-btn"><i data-lucide="refresh-cw"></i> Refresh</button>
           </div>
         </header>
+
+        <div class="selection-bar hidden" id="outputs-selection-bar">
+          <span id="outputs-selection-count">0 selected</span>
+          <div class="selection-bar-actions">
+            <button class="btn-ghost" id="outputs-select-all">Select all</button>
+            <button class="btn-ghost" id="outputs-select-cancel">Cancel</button>
+            <button class="btn-danger" id="outputs-delete-selected"><i data-lucide="trash-2"></i> Delete selected</button>
+          </div>
+        </div>
 
         <div class="page-body">
           <div class="stat-row" id="outputs-stats"></div>
@@ -1056,6 +1076,11 @@
         <i data-lucide="triangle-alert"></i>
         <span>Posted as a YouTube Short. You can change privacy or delete it afterwards from YouTube Studio.</span>
       </div>
+
+      <label class="checkbox-row" id="publish-keep-row" hidden>
+        <input type="checkbox" id="publish-keep" checked />
+        <span>Keep this in Outputs after posting</span>
+      </label>
 
       <div class="progress-bar-track" id="publish-progress-track" hidden>
         <div class="progress-bar-fill" id="publish-progress-fill" style="width:0%"></div>

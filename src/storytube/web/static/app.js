@@ -4,6 +4,10 @@ const state = {
   activeTab: "story",
   outputs: [],
   outputFilter: "all",
+  outputsSelectMode: false,
+  selectedOutputs: new Set(),
+  pendingDraftPoemName: null,
+  pendingDraftStoryName: null,
   stories: [],
   lightboxImages: [],
   lightboxIndex: 0,
@@ -881,6 +885,11 @@ async function openPublishModal(name, caption, platform = "instagram") {
   $("publish-warning-ig").hidden = isYoutube;
   $("publish-warning-yt").hidden = !isYoutube;
 
+  const isDraft = state.pendingDraftPoemName === name || state.pendingDraftStoryName === name
+    || state.outputs?.find((o) => o.name === name)?.is_draft === true;
+  $("publish-keep-row").hidden = !isDraft;
+  $("publish-keep").checked = true;
+
   if (isYoutube) {
     $("publish-yt-title").value = deriveYoutubeTitle(name, caption);
     $("publish-yt-description").value = caption || "";
@@ -986,6 +995,16 @@ async function startPublish() {
       $("publish-progress-fill").style.width = "100%";
       $("publish-status").textContent = doneLabel + thumbnailNote;
       toast(doneLabel + (thumbnailNote ? " \u2014 thumbnail needs phone verification" : ""));
+
+      if (!$("publish-keep-row").hidden) {
+        if ($("publish-keep").checked) {
+          await saveOutput(name);
+        } else {
+          await discardOutput(name);
+        }
+        if (state.pendingDraftPoemName === name) state.pendingDraftPoemName = null;
+        if (state.pendingDraftStoryName === name) state.pendingDraftStoryName = null;
+      }
       if (state.activeTab === "outputs") await loadOutputs();
       const publishedCurrentPoem = state.lastPoemName && name === state.lastPoemName;
       setTimeout(() => {
@@ -1494,7 +1513,48 @@ function clearPoemBackground() {
   renderPoemPreview();
 }
 
+async function markOutputDraft(name) {
+  try {
+    await fetch(`/api/outputs/${encodeURIComponent(name)}/draft`, { method: "POST" });
+  } catch {
+    /* Non-fatal: worst case an abandoned reel is not auto-cleaned up. */
+  }
+}
+
+async function saveOutput(name) {
+  try {
+    await fetch(`/api/outputs/${encodeURIComponent(name)}/save`, { method: "POST" });
+  } catch {
+    /* Non-fatal: the reel is still on disk either way. */
+  }
+}
+
+async function discardOutput(name) {
+  try {
+    await fetch(`/api/outputs/${encodeURIComponent(name)}`, { method: "DELETE" });
+  } catch {
+    /* Non-fatal: worst case an unwanted draft lingers until deleted by hand. */
+  }
+}
+
+// A reel is a draft (deleted if you never save it) from the moment it finishes
+// generating until you click Save, publish it, or open it again from Outputs.
+async function discardPendingPoemDraft() {
+  const pending = state.pendingDraftPoemName;
+  if (!pending) return;
+  state.pendingDraftPoemName = null;
+  await discardOutput(pending);
+}
+
+async function discardPendingStoryDraft() {
+  const pending = state.pendingDraftStoryName;
+  if (!pending) return;
+  state.pendingDraftStoryName = null;
+  await discardOutput(pending);
+}
+
 function resetPoemForm() {
+  discardPendingPoemDraft();
   $("poem-text").value = "";
   $("poem-text").dispatchEvent(new Event("input", { bubbles: true }));
   clearPoemBackground();
@@ -1812,6 +1872,17 @@ function setupPoetry() {
   $("poem-publish-yt").addEventListener("click", () => {
     if (state.lastPoemName) openPublishModal(state.lastPoemName, $("poem-caption").value, "youtube");
   });
+  $("poem-save").addEventListener("click", async () => {
+    if (!state.lastPoemName) return;
+    $("poem-save").disabled = true;
+    await saveOutput(state.lastPoemName);
+    if (state.pendingDraftPoemName === state.lastPoemName) state.pendingDraftPoemName = null;
+    $("poem-save").innerHTML = `${icon("check", 14)} Saved`;
+    $("poem-draft-notice").hidden = true;
+    refreshIcons();
+    toast("Saved");
+    loadOutputs();
+  });
   $("poem-clear").addEventListener("click", () => resetPoemForm());
 
   setupCropDragging();
@@ -1952,6 +2023,7 @@ function setPoemBusy(busy) {
 }
 
 async function startPoem() {
+  await discardPendingPoemDraft();
   closePoemReview();
   setPoemBusy(true);
 
@@ -2004,6 +2076,8 @@ async function startPoem() {
 
 async function finishPoem(name) {
   state.lastPoemName = name;
+  state.pendingDraftPoemName = name;
+  markOutputDraft(name);
   $("poem-progress-fill").style.width = "100%";
   $("poem-progress-label").textContent = "Finished";
   $("poem-progress-card").hidden = true;
@@ -2025,6 +2099,10 @@ async function finishPoem(name) {
   $("poem-caption").value = made?.caption || "";
   $("poem-download").href = `/api/outputs/${encodeURIComponent(name)}/download`;
   $("poem-download").download = `${name}.mp4`;
+  $("poem-save").hidden = false;
+  $("poem-save").disabled = false;
+  $("poem-save").innerHTML = `${icon("bookmark", 14)} Save`;
+  $("poem-draft-notice").hidden = false;
   $("poem-result-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
   toast("Reel ready");
   loadOutputCount();
@@ -2131,6 +2209,17 @@ function setupGenerate() {
   });
   $("result-publish-yt").addEventListener("click", () => {
     if (state.lastStoryName) openPublishModal(state.lastStoryName, "", "youtube");
+  });
+  $("result-save").addEventListener("click", async () => {
+    if (!state.lastStoryName) return;
+    $("result-save").disabled = true;
+    await saveOutput(state.lastStoryName);
+    if (state.pendingDraftStoryName === state.lastStoryName) state.pendingDraftStoryName = null;
+    $("result-save").innerHTML = `${icon("check", 14)} Saved`;
+    $("result-draft-notice").hidden = true;
+    refreshIcons();
+    toast("Saved");
+    loadOutputs();
   });
 
   $("generate-btn").addEventListener("click", () => {
@@ -2299,6 +2388,7 @@ function closeReviewModal() {
 }
 
 async function startGeneration() {
+  await discardPendingStoryDraft();
   const opts = gatherGenerateOptions();
   {
     $("generate-btn").disabled = true;
@@ -2353,6 +2443,12 @@ async function startGeneration() {
         $("result-download").href = `/api/outputs/${encodeURIComponent(story_name)}/download`;
         $("result-download").download = `${story_name}.mp4`;
         state.lastStoryName = story_name;
+        state.pendingDraftStoryName = story_name;
+        markOutputDraft(story_name);
+        $("result-save").hidden = false;
+        $("result-save").disabled = false;
+        $("result-save").innerHTML = `${icon("bookmark", 14)} Save`;
+        $("result-draft-notice").hidden = false;
         // Instagram reels and YouTube Shorts are both vertical, so only offer them when the render is not landscape.
         const [rw, rh] = (opts.size || "1920x1080").split("x").map(Number);
         $("result-publish").hidden = rw >= rh;
@@ -2980,6 +3076,7 @@ function renderOutputs() {
     const posted = o.instagram && o.instagram.media_id;
     const postedYoutube = o.youtube && o.youtube.video_id;
     const badges =
+      (o.is_draft ? `<span class="badge warn">${icon("circle-alert", 12)} draft</span>` : "") +
       (posted ? `<span class="badge posted">${icon("check", 12)} IG posted</span>` : "") +
       (postedYoutube ? `<span class="badge posted">${icon("check", 12)} YT posted</span>` : "") +
       [shapeLabel, o.language].filter(Boolean)
@@ -2994,6 +3091,7 @@ function renderOutputs() {
       : "";
 
     card.innerHTML = `
+      <input type="checkbox" class="output-card-select" ${state.outputsSelectMode ? "" : "hidden"} ${state.selectedOutputs.has(o.name) ? "checked" : ""} />
       ${thumb}
       <div class="output-body">
         <div class="name">${titleCase(o.name)}</div>
@@ -3006,6 +3104,13 @@ function renderOutputs() {
         </div>
       </div>
       <div class="output-actions"></div>`;
+
+    card.dataset.name = o.name;
+    card.classList.toggle("selected", state.selectedOutputs.has(o.name));
+    card.querySelector(".output-card-select").addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleOutputSelection(o.name, e.target.checked);
+    });
 
     card.querySelectorAll(".scene-strip img").forEach((img, i) => {
       img.addEventListener("click", () => openLightbox(o.images, i));
@@ -3110,6 +3215,7 @@ function buildCardMenu(items) {
     const wasOpen = !popup.classList.contains("hidden");
     closeAllCardMenus();
     popup.classList.toggle("hidden", wasOpen);
+    wrap.closest(".output-card")?.classList.toggle("menu-open", !wasOpen);
     // Flip upwards when there is not enough room below.
     if (!wasOpen) {
       const room = window.innerHeight - trigger.getBoundingClientRect().bottom;
@@ -3125,6 +3231,7 @@ function buildCardMenu(items) {
 
 function closeAllCardMenus() {
   document.querySelectorAll(".menu-popup").forEach((p) => p.classList.add("hidden"));
+  document.querySelectorAll(".output-card.menu-open").forEach((c) => c.classList.remove("menu-open"));
 }
 
 async function deleteOutput(o) {
@@ -3363,6 +3470,56 @@ function setupOutputsToolbar() {
     await loadOutputs();
     toast("Outputs refreshed");
   });
+
+  $("outputs-select-toggle").addEventListener("click", () => setOutputsSelectMode(true));
+  $("outputs-select-cancel").addEventListener("click", () => setOutputsSelectMode(false));
+  $("outputs-select-all").addEventListener("click", () => {
+    document.querySelectorAll("#outputs-list .output-card").forEach((card) => state.selectedOutputs.add(card.dataset.name));
+    renderOutputs();
+    updateSelectionBar();
+  });
+  $("outputs-delete-selected").addEventListener("click", async () => {
+    const names = [...state.selectedOutputs];
+    if (!names.length) return;
+    const ok = await confirmAction({
+      title: `Delete ${names.length} video${names.length > 1 ? "s" : ""}?`,
+      message: "This cannot be undone.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
+    const res = await fetch("/api/outputs/bulk_delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ names }),
+    });
+    const data = await res.json();
+    toast(data.failed?.length ? `Deleted ${data.deleted.length}, ${data.failed.length} failed` : `Deleted ${data.deleted.length}`);
+    setOutputsSelectMode(false);
+    await loadOutputs();
+  });
+}
+
+function setOutputsSelectMode(on) {
+  state.outputsSelectMode = on;
+  if (!on) state.selectedOutputs.clear();
+  $("outputs-select-toggle").hidden = on;
+  updateSelectionBar();
+  renderOutputs();
+}
+
+function toggleOutputSelection(name, checked) {
+  if (checked) state.selectedOutputs.add(name);
+  else state.selectedOutputs.delete(name);
+  const card = document.querySelector(`#outputs-list .output-card[data-name="${CSS.escape(name)}"]`);
+  card?.classList.toggle("selected", checked);
+  updateSelectionBar();
+}
+
+function updateSelectionBar() {
+  const count = state.selectedOutputs.size;
+  $("outputs-selection-bar").classList.toggle("hidden", !state.outputsSelectMode);
+  $("outputs-selection-count").textContent = `${count} selected`;
+  $("outputs-delete-selected").disabled = count === 0;
 }
 
 /* ---------------- Init ---------------- */

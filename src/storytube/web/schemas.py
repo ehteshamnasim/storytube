@@ -36,6 +36,10 @@ class PublishRequest(BaseModel):
     force: bool = False
 
 
+class BulkDeleteRequest(BaseModel):
+    names: list[str] = []
+
+
 class YoutubeConnectRequest(BaseModel):
     client_id: str = ""
     client_secret: str = ""

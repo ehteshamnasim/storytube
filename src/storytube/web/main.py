@@ -36,6 +36,7 @@ from ..tts_indicf5 import generate_voice_over_indicf5
 from ..tts_sarvam import generate_voice_over_sarvam
 from . import config_store, jobs, prompt_store
 from .schemas import (
+    BulkDeleteRequest,
     ConfigUpdateRequest,
     GenerateRequest,
     PoemRequest,
@@ -236,6 +237,7 @@ def list_outputs() -> dict:
                 "caption": caption,
                 "instagram": posted or None,
                 "youtube": posted_yt or None,
+                "is_draft": (story_dir / ".draft").exists(),
                 "description": meta.get("description") or meta.get("mood", ""),
                 "language": meta.get("language", ""),
                 "category": meta.get("category", ""),
@@ -692,6 +694,35 @@ def download_output(name: str) -> FileResponse:
 def delete_output(name: str) -> dict:
     story_dir = resolve_output_dir(name)
     shutil.rmtree(story_dir)
+    return {"ok": True}
+
+
+@app.post("/api/outputs/bulk_delete")
+def bulk_delete_outputs(payload: BulkDeleteRequest) -> dict:
+    deleted, failed = [], []
+    for name in payload.names:
+        try:
+            story_dir = resolve_output_dir(name)
+            shutil.rmtree(story_dir)
+            deleted.append(name)
+        except HTTPException:
+            failed.append(name)
+    return {"deleted": deleted, "failed": failed}
+
+
+@app.post("/api/outputs/{name}/draft")
+def mark_output_draft(name: str) -> dict:
+    """Called right after a fresh generation finishes. Lets an abandoned reel be told
+    apart from one you actually kept, so leaving without saving can clean up after itself."""
+    story_dir = resolve_output_dir(name)
+    (story_dir / ".draft").touch()
+    return {"ok": True}
+
+
+@app.post("/api/outputs/{name}/save")
+def save_output(name: str) -> dict:
+    story_dir = resolve_output_dir(name)
+    (story_dir / ".draft").unlink(missing_ok=True)
     return {"ok": True}
 
 
