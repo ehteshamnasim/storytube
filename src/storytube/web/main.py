@@ -23,10 +23,14 @@ from ..poetry import (
     DELIVERY,
     POEM_TEMPLATES,
     POET_AVATARS,
+    POET_AVATARS_DIR,
     PoemError,
     PoemOptions,
+    _segment_lines,
     clean_poem,
     load_photo,
+    prepare_background,
+    render_poem_card,
     undrawable_characters,
 )
 from ..story_reader import read_story
@@ -399,6 +403,9 @@ def start_poem(payload: PoemRequest) -> dict:
         voice_provider=payload.voice_provider,
         text_scale=payload.text_scale,
         avatar_id=payload.avatar_id,
+        lines_per_segment=payload.lines_per_segment,
+        transition=payload.transition,
+        transition_seconds=payload.transition_seconds,
     )
     job = jobs.create_poem_job(name, "\n".join(lines), options)
     return {"job_id": job.id, "name": name, "lines": lines}
@@ -629,6 +636,48 @@ def resolve_poem_background(payload: "PoemRequest") -> Optional[Path]:
     if payload.background_file:
         return resolve_upload(payload.background_file)
     return None
+
+
+PREVIEW_DIR = config.OUTPUT_DIR / "_preview"
+
+
+@app.post("/api/poem/preview")
+def preview_poem(payload: PoemRequest) -> dict:
+    """Render the on-screen card(s) as still images, fast, so people can check text/emoji/
+    segment settings before spending time and API calls on a full reel."""
+    try:
+        lines = clean_poem(payload.poem_text)
+    except PoemError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    background_file = resolve_poem_background(payload)
+    if background_file is None:
+        raise HTTPException(status_code=400, detail="Pick a template or upload a background image to preview.")
+
+    avatar_file = None
+    poet_name = ""
+    if payload.avatar_id:
+        poet = next((p for p in POET_AVATARS if p["id"] == payload.avatar_id), None)
+        if poet:
+            avatar_file = POET_AVATARS_DIR / poet["file"]
+            poet_name = poet["label"]
+
+    PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    prepared_bg = PREVIEW_DIR / "background.png"
+    prepare_background(background_file, prepared_bg, payload.size, payload.focus_x, payload.focus_y, payload.zoom)
+
+    segments = _segment_lines(lines, payload.lines_per_segment)
+    stamp = int(datetime.now().timestamp())
+    images = []
+    for i, segment in enumerate(segments):
+        filename = f"segment_{i:02d}.png"
+        render_poem_card(
+            prepared_bg, segment, PREVIEW_DIR / filename, payload.size, payload.handle, payload.text_scale,
+            avatar_file, poet_name,
+        )
+        images.append(f"/output/_preview/{filename}?t={stamp}")
+
+    return {"ok": True, "segments": len(segments), "images": images}
 
 
 @app.post("/api/poem/background")

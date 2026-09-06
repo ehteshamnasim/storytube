@@ -21,6 +21,7 @@ const state = {
   poemNarrate: false,
   poemDelivery: "recitation",
   poemProvider: "edge",
+  poemTransition: "cut",
   elevenVoices: null,
   poemVoiceTouched: false,
   poemBackground: null,
@@ -1248,12 +1249,15 @@ function gatherPoemOptions() {
     voice_provider: state.poemProvider || "edge",
     text_scale: parseFloat($("poem-text-scale").value),
     avatar_id: $("poem-avatar").value,
+    lines_per_segment: parseInt($("poem-lines-per-segment").value, 10),
+    transition: state.poemTransition || "cut",
+    transition_seconds: parseFloat($("poem-transition-seconds").value),
   };
 }
 
 /* Reel defaults are remembered so you never retype your handle or re-pick a track. */
 const POEM_PREFS_KEY = "storytube.poem.prefs";
-const POEM_PREF_FIELDS = ["poem-language", "poem-style", "poem-size", "poem-handle", "poem-music-volume", "poem-pace", "poem-seed", "poem-voice", "poem-text-scale", "poem-avatar"];
+const POEM_PREF_FIELDS = ["poem-language", "poem-style", "poem-size", "poem-handle", "poem-music-volume", "poem-pace", "poem-seed", "poem-voice", "poem-text-scale", "poem-avatar", "poem-lines-per-segment", "poem-transition-seconds"];
 
 function savePoemPrefs() {
   const prefs = {};
@@ -1264,6 +1268,7 @@ function savePoemPrefs() {
   prefs.narrate = state.poemNarrate === true;
   prefs.delivery = state.poemDelivery || "recitation";
   prefs.provider = state.poemProvider || "edge";
+  prefs.transition = state.poemTransition || "cut";
   try {
     localStorage.setItem(POEM_PREFS_KEY, JSON.stringify(prefs));
   } catch {
@@ -1292,8 +1297,28 @@ function loadPoemPrefs() {
   $("poem-pace-out").textContent = `${Number($("poem-pace").value).toFixed(1)}s`;
   $("poem-seed-out").textContent = $("poem-seed").value;
   $("poem-text-scale-out").textContent = `${Math.round($("poem-text-scale").value * 100)}%`;
+  updatePoemLinesPerSegmentOut();
+  $("poem-transition-seconds-out").textContent = `${Number($("poem-transition-seconds").value).toFixed(1)}s`;
+  setPoemTransition(prefs.transition || "cut");
   return prefs;
 }
+
+function updatePoemLinesPerSegmentOut() {
+  const value = parseInt($("poem-lines-per-segment").value, 10);
+  $("poem-lines-per-segment-out").textContent = value === 0 ? "All at once" : String(value);
+  $("poem-lines-per-segment-hint").textContent = value === 0
+    ? "The whole poem shows at once, the way it always used to."
+    : `The poem reveals in groups of ${value} line${value === 1 ? "" : "s"}, one after another.`;
+}
+
+function setPoemTransition(mode) {
+  state.poemTransition = mode;
+  document.querySelectorAll("#poem-transition-segmented .segment").forEach((s) =>
+    s.classList.toggle("active", s.dataset.value === mode)
+  );
+  $("poem-transition-seconds-row").hidden = mode !== "fade";
+}
+
 
 function setPoemMode(mode) {
   state.poemMode = mode;
@@ -1755,6 +1780,13 @@ function setupPoetry() {
   $("poem-seed").addEventListener("input", (e) => {
     $("poem-seed-out").textContent = e.target.value;
   });
+  $("poem-lines-per-segment").addEventListener("input", updatePoemLinesPerSegmentOut);
+  $("poem-transition-seconds").addEventListener("input", (e) => {
+    $("poem-transition-seconds-out").textContent = `${Number(e.target.value).toFixed(1)}s`;
+  });
+  document.querySelectorAll("#poem-transition-segmented .segment").forEach((seg) =>
+    seg.addEventListener("click", () => { setPoemTransition(seg.dataset.value); savePoemPrefs(); })
+  );
 
   document.querySelectorAll("#poem-bg-segmented .segment").forEach((seg) =>
     seg.addEventListener("click", () => setPoemMode(seg.dataset.value))
@@ -1946,6 +1978,36 @@ function renderPoemMusic(assets) {
   syncMusicIcons();
 }
 
+let poemPreviewToken = 0;
+async function loadPoemCardPreview(opts) {
+  const token = ++poemPreviewToken;
+  const gallery = $("poem-card-preview");
+  gallery.hidden = false;
+  gallery.classList.add("loading");
+  gallery.innerHTML = `<div class="poem-card-preview-item"><span>Rendering…</span></div>`;
+  $("poem-review-lines").hidden = true;
+  try {
+    const res = await fetch("/api/poem/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(opts),
+    });
+    if (token !== poemPreviewToken) return;
+    if (!res.ok) throw new Error("preview failed");
+    const data = await res.json();
+    if (token !== poemPreviewToken) return;
+    gallery.classList.remove("loading");
+    gallery.innerHTML = (data.images || [])
+      .map((src, i) => `<div class="poem-card-preview-item"><img src="${src}" alt="Page ${i + 1}" /><span>${data.images.length > 1 ? `Page ${i + 1} of ${data.images.length}` : "Preview"}</span></div>`)
+      .join("");
+  } catch {
+    if (token !== poemPreviewToken) return;
+    gallery.hidden = true;
+    gallery.innerHTML = "";
+    $("poem-review-lines").hidden = false;
+  }
+}
+
 async function openPoemReview() {
   const lines = poemLines();
 
@@ -1975,6 +2037,13 @@ async function openPoemReview() {
 
   const opts = gatherPoemOptions();
   const usingOwnImage = hasInstantBackground();
+  if (usingOwnImage && lines.length) {
+    loadPoemCardPreview(opts);
+  } else {
+    $("poem-card-preview").hidden = true;
+    $("poem-card-preview").innerHTML = "";
+    $("poem-review-lines").hidden = false;
+  }
   const backgroundLabel = state.poemMode === "upload"
     ? state.poemBackground?.name || "Your photo"
     : state.poemMode === "template"

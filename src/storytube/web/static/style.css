@@ -1799,6 +1799,36 @@ input.invalid, textarea.invalid {
   letter-spacing: 0.05em;
   color: var(--text-faint);
 }
+.poem-card-preview {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 10px;
+}
+.poem-card-preview-item {
+  flex: 0 0 auto;
+  width: 108px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+.poem-card-preview-item img {
+  width: 108px;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+.poem-card-preview-item span {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.poem-card-preview.loading .poem-card-preview-item img {
+  opacity: 0.4;
+}
 .review-rows {
   background: var(--bg-elevated);
   border: 1px solid var(--border);

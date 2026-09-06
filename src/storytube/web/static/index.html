@@ -948,6 +948,22 @@
         <div class="help-text" id="poem-duration-hint">Reel will be about 5 seconds.</div>
       </div>
       <div class="field-row">
+        <div class="label-row"><label for="poem-lines-per-segment">Lines shown at once</label><span class="counter" id="poem-lines-per-segment-out">2</span></div>
+        <input type="range" id="poem-lines-per-segment" min="0" max="6" step="1" value="2" />
+        <div class="help-text" id="poem-lines-per-segment-hint">The poem reveals in groups of 2 lines, one after another. Drag to 0 for "show every line at once" instead.</div>
+      </div>
+      <div class="field-row" id="poem-transition-row">
+        <label for="poem-transition">Transition between lines</label>
+        <div class="segmented" id="poem-transition-segmented">
+          <button class="segment active" data-value="cut">Cut</button>
+          <button class="segment" data-value="fade">Fade</button>
+        </div>
+      </div>
+      <div class="field-row" id="poem-transition-seconds-row" hidden>
+        <div class="label-row"><label>Fade length</label><span class="counter" id="poem-transition-seconds-out">0.5s</span></div>
+        <input type="range" id="poem-transition-seconds" min="0.2" max="1.2" step="0.1" value="0.5" />
+      </div>
+      <div class="field-row">
         <label for="poem-style">Style prompt <span class="optional">when generating</span></label>
         <input type="text" id="poem-style" value="cinematic atmospheric photography, painterly, muted tones" />
       </div>
@@ -1007,7 +1023,8 @@
     <div class="modal-body">
       <div id="poem-review-warnings"></div>
       <div class="review-group">
-        <h3>Lines as they will be drawn</h3>
+        <h3>How it will look</h3>
+        <div class="poem-card-preview" id="poem-card-preview" hidden></div>
         <div class="poem-preview" id="poem-review-lines"></div>
       </div>
       <div class="review-group">

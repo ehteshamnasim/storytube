@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -23,7 +24,7 @@ except ImportError:  # pragma: no cover - HEIC uploads are simply rejected inste
 
 from . import config
 from .assemble import add_background_ambience, get_audio_duration, mux_audio_video
-from .bookends import build_card_clip
+from .bookends import build_card_clip, concat_clips
 from .image_gen import generate_image
 from .tts import generate_voice_over
 from .tts_elevenlabs import generate_voice_over_elevenlabs
@@ -123,6 +124,120 @@ LATIN_FONTS = [
 # Nastaliq slopes steeply and has deep descenders, so it needs more room per line.
 LINE_SPACING = {"arabic": 2.05, "devanagari": 1.62, "latin": 1.5}
 
+# Apple Color Emoji is a bitmap ("sbix") font that only opens at these fixed strike
+# sizes - anything else throws "invalid pixel size". We load the closest one at or
+# above what we need and downscale the glyph, rather than trying arbitrary sizes.
+EMOJI_FONT_PATH = "/System/Library/Fonts/Apple Color Emoji.ttc"
+EMOJI_STRIKE_SIZES = [20, 32, 40, 48, 64, 96, 160]
+EMOJI_FONT_AVAILABLE = Path(EMOJI_FONT_PATH).is_file()
+
+_EMOJI_RANGES = (
+    (0x1F300, 0x1FAFF),
+    (0x2600, 0x27BF),
+    (0x1F1E6, 0x1F1FF),
+    (0x2190, 0x21FF),
+    (0x2B00, 0x2BFF),
+    (0x1F000, 0x1F0FF),
+    (0x2300, 0x23FF),
+    (0xFE0F, 0xFE0F),
+    (0x200D, 0x200D),
+)
+
+
+def _is_emoji_char(char: str) -> bool:
+    if not EMOJI_FONT_AVAILABLE:
+        return False
+    code = ord(char)
+    return any(lo <= code <= hi for lo, hi in _EMOJI_RANGES)
+
+
+def _split_emoji_runs(line: str) -> list[tuple[str, bool]]:
+    """Split a line into (text, is_emoji) runs, keeping their order."""
+    runs: list[tuple[str, bool]] = []
+    current = ""
+    current_is_emoji = False
+    for char in line:
+        is_emoji = _is_emoji_char(char)
+        if current and is_emoji != current_is_emoji:
+            runs.append((current, current_is_emoji))
+            current = ""
+        current += char
+        current_is_emoji = is_emoji
+    if current:
+        runs.append((current, current_is_emoji))
+    return runs
+
+
+_emoji_font_cache: dict[int, ImageFont.FreeTypeFont] = {}
+
+
+def _load_emoji_font(target_size: int) -> tuple[ImageFont.FreeTypeFont, int]:
+    strike = next((s for s in EMOJI_STRIKE_SIZES if s >= target_size), EMOJI_STRIKE_SIZES[-1])
+    if strike not in _emoji_font_cache:
+        _emoji_font_cache[strike] = ImageFont.truetype(EMOJI_FONT_PATH, strike)
+    return _emoji_font_cache[strike], strike
+
+
+_emoji_render_cache: dict[tuple[str, int], Image.Image] = {}
+
+
+def _render_emoji_run(text: str, target_size: int) -> Image.Image:
+    """A small RGBA image of this emoji run, scaled to sit at the same visual height as
+    the surrounding text."""
+    cache_key = (text, target_size)
+    if cache_key in _emoji_render_cache:
+        return _emoji_render_cache[cache_key]
+
+    font, strike = _load_emoji_font(target_size)
+    pad = strike // 2
+    canvas_size = (strike * max(1, len(text)) + pad * 2, strike + pad * 2)
+    tmp = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
+    ImageDraw.Draw(tmp).text((pad, pad), text, font=font, embedded_color=True)
+    bbox = tmp.getbbox()
+    tmp = tmp.crop(bbox) if bbox else Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+    if strike != target_size and tmp.width > 1:
+        scale = target_size / strike
+        new_size = (max(1, round(tmp.width * scale)), max(1, round(tmp.height * scale)))
+        tmp = tmp.resize(new_size, Image.LANCZOS)
+    _emoji_render_cache[cache_key] = tmp
+    return tmp
+
+
+def _measure_line_width(draw: ImageDraw.ImageDraw, line: str, font: ImageFont.FreeTypeFont, emoji_size: int) -> float:
+    """Width of a line that may mix ordinary text with emoji, which the text font can't draw."""
+    if not any(_is_emoji_char(c) for c in line):
+        return draw.textlength(line, font=font)
+    total = 0.0
+    for text, is_emoji in _split_emoji_runs(line):
+        total += _render_emoji_run(text, emoji_size).width if is_emoji else draw.textlength(text, font=font)
+    return total
+
+
+def _draw_mixed_line(
+    draw: ImageDraw.ImageDraw, canvas: Image.Image, x: float, y: float, line: str,
+    font: ImageFont.FreeTypeFont, emoji_size: int, fill: tuple, shadow: bool,
+) -> None:
+    """Draw a line that may mix ordinary text with emoji glyphs pasted in inline."""
+    if not any(_is_emoji_char(c) for c in line):
+        if shadow:
+            draw.text((x + 2, y + 3), line, font=font, fill=(0, 0, 0, 150))
+        draw.text((x, y), line, font=font, fill=fill)
+        return
+
+    cursor = x
+    for text, is_emoji in _split_emoji_runs(line):
+        if is_emoji:
+            glyph = _render_emoji_run(text, emoji_size)
+            paste_y = int(y + (emoji_size - glyph.height) * 0.5)
+            canvas.paste(glyph, (int(cursor), paste_y), glyph)
+            cursor += glyph.width
+        else:
+            if shadow:
+                draw.text((cursor + 2, y + 3), text, font=font, fill=(0, 0, 0, 150))
+            draw.text((cursor, y), text, font=font, fill=fill)
+            cursor += draw.textlength(text, font=font)
+
+
 RESPONSE_SCHEMA = {
     "type": "object",
     "properties": {
@@ -157,6 +272,9 @@ class PoemOptions:
     voice_provider: str = "edge"
     text_scale: float = 1.0
     avatar_id: str = ""
+    lines_per_segment: int = 2
+    transition: str = "cut"
+    transition_seconds: float = 0.5
 
 
 @dataclass
@@ -286,7 +404,8 @@ def plan_poem(poem_text: str, options: PoemOptions) -> dict:
 
 
 def undrawable_characters(text: str) -> list[str]:
-    """Characters no available font can draw; they would show up as empty boxes."""
+    """Characters no available font can draw; they would show up as empty boxes.
+    Emoji are handled by their own dedicated font path, so they are never flagged here."""
     script = _script_of(text)
     fonts = []
     for path in _font_candidates(script):
@@ -301,7 +420,7 @@ def undrawable_characters(text: str) -> list[str]:
 
     missing = []
     for char in dict.fromkeys(text):
-        if char.isspace() or not char.isprintable():
+        if char.isspace() or not char.isprintable() or _is_emoji_char(char):
             continue
         if not any(_covers(font, char) for font in fonts):
             missing.append(char)
@@ -309,7 +428,8 @@ def undrawable_characters(text: str) -> list[str]:
 
 
 def strip_undrawable(lines: list[str]) -> list[str]:
-    """Drop characters no font can draw, so emoji never land on the card as boxes."""
+    """Drop characters no font can draw, so unsupported glyphs never land on the card as
+    boxes - emoji are kept, they are drawn through a separate colour font."""
     missing = set(undrawable_characters(" ".join(lines)))
     if not missing:
         return lines
@@ -319,6 +439,7 @@ def strip_undrawable(lines: list[str]) -> list[str]:
         if text:
             cleaned.append(text)
     return cleaned or lines
+
 
 
 def load_photo(source: Path) -> Image.Image:
@@ -400,8 +521,12 @@ def _recite(
     delivery: str,
     provider: str = "edge",
     language: str = "English",
-) -> Path:
-    """Read the poem a line at a time so the line breaks are audible as silence."""
+) -> tuple[Path, list[tuple[float, float]]]:
+    """Read the poem a line at a time so the line breaks are audible as silence.
+
+    Also returns each spoken line's (start, end) time within out_path, so the on-screen
+    text can be synced to when it is actually being read rather than shown all at once.
+    """
     settings = DELIVERY.get(delivery, DELIVERY[DEFAULT_DELIVERY])
     pause = settings["pause"]
     spoken = [line for line in lines if line.strip()]
@@ -417,7 +542,18 @@ def _recite(
 
     if not pause or len(spoken) < 2:
         synthesise("\n".join(spoken), out_path)
-        return out_path
+        # No per-line audio to measure, so split the one recording by character count -
+        # the same estimate used for word-level captions elsewhere in the app.
+        total = get_audio_duration(out_path)
+        weights = [max(len(line), 1) for line in spoken] or [1]
+        total_weight = sum(weights)
+        timings = []
+        cursor = 0.0
+        for weight in weights:
+            share = total * (weight / total_weight)
+            timings.append((cursor, cursor + share))
+            cursor += share
+        return out_path, timings
 
     parts_dir = out_dir / "voice_lines"
     parts_dir.mkdir(parents=True, exist_ok=True)
@@ -426,6 +562,13 @@ def _recite(
         part = parts_dir / f"line_{index:02d}.mp3"
         synthesise(line, part)
         parts.append(part)
+
+    timings: list[tuple[float, float]] = []
+    cursor = 0.0
+    for part in parts:
+        line_duration = get_audio_duration(part)
+        timings.append((cursor, cursor + line_duration))
+        cursor += line_duration + pause
 
     command = [config.FFMPEG_BIN, "-y", "-v", "error"]
     for part in parts:
@@ -442,7 +585,7 @@ def _recite(
         str(out_path),
     ]
     subprocess.run(command, check=True, capture_output=True, stdin=subprocess.DEVNULL)
-    return out_path
+    return out_path, timings
 
 
 def _fallback_plan(lines: list[str]) -> dict:
@@ -456,14 +599,15 @@ def _fallback_plan(lines: list[str]) -> dict:
 
 
 def _wrap_line(draw: ImageDraw.ImageDraw, line: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
-    if draw.textlength(line, font=font) <= max_width:
+    emoji_size = font.size
+    if _measure_line_width(draw, line, font, emoji_size) <= max_width:
         return [line]
 
     wrapped: list[str] = []
     current = ""
     for word in line.split(" "):
         candidate = f"{current} {word}".strip()
-        if draw.textlength(candidate, font=font) <= max_width or not current:
+        if _measure_line_width(draw, candidate, font, emoji_size) <= max_width or not current:
             current = candidate
         else:
             wrapped.append(current)
@@ -474,9 +618,9 @@ def _wrap_line(draw: ImageDraw.ImageDraw, line: str, font: ImageFont.FreeTypeFon
     # A single word can still be wider than the frame, so break it by characters.
     broken: list[str] = []
     for piece in wrapped:
-        while draw.textlength(piece, font=font) > max_width and len(piece) > 1:
+        while _measure_line_width(draw, piece, font, emoji_size) > max_width and len(piece) > 1:
             cut = len(piece) - 1
-            while cut > 1 and draw.textlength(piece[:cut], font=font) > max_width:
+            while cut > 1 and _measure_line_width(draw, piece[:cut], font, emoji_size) > max_width:
                 cut -= 1
             broken.append(piece[:cut])
             piece = piece[cut:]
@@ -502,7 +646,8 @@ def _layout(
     max_text_width = int(width * 0.80)
     max_text_height = int(height * 0.52)
     spacing = LINE_SPACING.get(script, 1.6)
-    sample = " ".join(lines)
+    full_sample = " ".join(lines)
+    sample = "".join(c for c in full_sample if not _is_emoji_char(c)) or full_sample
     sizes = range(int(height * 0.055), int(height * 0.016), -2)
 
     natural_size = None
@@ -513,7 +658,7 @@ def _layout(
         line_height = int(size * spacing)
         if line_height * len(lines) > max_text_height:
             continue
-        if all(draw.textlength(line, font=font) <= max_text_width for line in lines):
+        if all(_measure_line_width(draw, line, font, size) <= max_text_width for line in lines):
             natural_size = size
             break
 
@@ -618,10 +763,9 @@ def render_poem_card(
     draw = ImageDraw.Draw(canvas)
     y = block_top
     for line in rendered:
-        text_width = draw.textlength(line, font=font)
+        text_width = _measure_line_width(draw, line, font, font.size)
         x = (width - text_width) / 2
-        draw.text((x + 2, y + 3), line, font=font, fill=(0, 0, 0, 150))
-        draw.text((x, y), line, font=font, fill=(250, 247, 240))
+        _draw_mixed_line(draw, canvas, x, y, line, font, font.size, (250, 247, 240), shadow=True)
         y += line_height
 
     rule_width = int(width * 0.12)
@@ -644,12 +788,119 @@ def render_poem_card(
 
     if avatar_file and poet_name and avatar_file.is_file():
         first_line = rendered[0] if rendered else ""
-        first_line_width = draw.textlength(first_line, font=font)
+        first_line_width = _measure_line_width(draw, first_line, font, font.size)
         first_line_x = (width - first_line_width) / 2
         canvas = _draw_poet_credit(canvas, avatar_file, poet_name, first_line_x, block_top, width, height)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     canvas.convert("RGB").save(out_path, quality=95)
+    return out_path
+
+
+def _segment_lines(lines: list[str], lines_per_segment: int) -> list[list[str]]:
+    """Group lines into on-screen pages. 0 (or covering everything anyway) means one static page."""
+    if lines_per_segment <= 0 or lines_per_segment >= len(lines):
+        return [lines]
+    return [lines[i:i + lines_per_segment] for i in range(0, len(lines), lines_per_segment)]
+
+
+def _segment_windows(
+    segments: list[list[str]],
+    total_duration: float,
+    line_timings: Optional[list[tuple[float, float]]],
+    lead_in: float,
+) -> list[tuple[float, float]]:
+    """Each segment's (start, end) in the final video. Timed to speech when narrating,
+    otherwise split in proportion to how many lines each segment shows."""
+    windows: list[tuple[float, float]] = []
+    if line_timings is not None:
+        idx = 0
+        for segment in segments:
+            last_line = idx + len(segment) - 1
+            start = 0.0 if not windows else windows[-1][1]
+            end = lead_in + line_timings[min(last_line, len(line_timings) - 1)][1]
+            windows.append((start, max(end, start + 0.6)))
+            idx += len(segment)
+    else:
+        total_lines = sum(len(s) for s in segments) or 1
+        cursor = 0.0
+        for segment in segments:
+            share = total_duration * (len(segment) / total_lines)
+            windows.append((cursor, cursor + share))
+            cursor += share
+    windows[-1] = (windows[-1][0], total_duration)
+    return windows
+
+
+def _build_music_track(duration: float, out_path: Path, music_file: Optional[Path], music_volume: float) -> Path:
+    """A continuous audio track for the whole reel, independent of how many on-screen
+    segments it is split into - segments must not restart the music at each cut."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if music_file and music_file.exists() and music_volume > 0:
+        fade = min(0.3, duration / 6)
+        command = [
+            config.FFMPEG_BIN, "-y", "-v", "error",
+            "-stream_loop", "-1", "-t", f"{duration:.3f}", "-i", str(music_file),
+            "-af", f"volume={music_volume},afade=t=in:st=0:d={fade:.2f},afade=t=out:st={max(duration - fade, 0):.2f}:d={fade:.2f}",
+            "-c:a", "aac",
+            str(out_path),
+        ]
+    else:
+        command = [
+            config.FFMPEG_BIN, "-y", "-v", "error",
+            "-f", "lavfi", "-t", f"{duration:.3f}", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+            "-c:a", "aac",
+            str(out_path),
+        ]
+    subprocess.run(command, check=True, capture_output=True, stdin=subprocess.DEVNULL)
+    return out_path
+
+
+def _concat_segments(
+    clips: list[Path], durations: list[float], out_path: Path, size: str, transition: str, transition_seconds: float
+) -> Path:
+    """Join segment clips with a hard cut, or a crossfade if there is room for one."""
+    if len(clips) == 1:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(clips[0], out_path)
+        return out_path
+
+    if transition != "fade":
+        return concat_clips(clips, out_path, size)
+
+    fade = min(transition_seconds, min(durations) / 2, 1.5)
+    if fade <= 0.05:
+        return concat_clips(clips, out_path, size)
+
+    width, height = (int(p) for p in size.split("x"))
+    command = [config.FFMPEG_BIN, "-y", "-v", "error"]
+    for clip in clips:
+        command += ["-i", str(clip)]
+
+    parts = []
+    for i in range(len(clips)):
+        parts.append(f"[{i}:v]scale={width}:{height},setsar=1,fps=25[v{i}];")
+        parts.append(f"[{i}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a{i}];")
+
+    running = durations[0]
+    prev_v, prev_a = "v0", "a0"
+    for i in range(1, len(clips)):
+        offset = max(0.0, running - fade)
+        out_v, out_a = f"vx{i}", f"ax{i}"
+        parts.append(f"[{prev_v}][v{i}]xfade=transition=fade:duration={fade:.3f}:offset={offset:.3f}[{out_v}];")
+        parts.append(f"[{prev_a}][a{i}]acrossfade=d={fade:.3f}[{out_a}];")
+        prev_v, prev_a = out_v, out_a
+        running += durations[i] - fade
+
+    command += [
+        "-filter_complex", "".join(parts),
+        "-map", f"[{prev_v}]", "-map", f"[{prev_a}]",
+        "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+        "-c:a", "aac", "-b:a", "192k",
+        "-movflags", "+faststart",
+        str(out_path),
+    ]
+    subprocess.run(command, check=True, capture_output=True, stdin=subprocess.DEVNULL)
     return out_path
 
 
@@ -713,18 +964,17 @@ def generate_poem_reel(
         if poet:
             avatar_file = POET_AVATARS_DIR / poet["file"]
             poet_name = poet["label"]
-    card = render_poem_card(
-        background, lines, out_dir / "card.png", options.size, options.handle, options.text_scale,
-        avatar_file, poet_name,
-    )
+
+    segments = _segment_lines(lines, options.lines_per_segment)
 
     video_path = out_dir / "reel.mp4"
     voice_path: Optional[Path] = None
+    line_timings: Optional[list[tuple[float, float]]] = None
     if options.narrate:
         voice = options.voice or default_poem_voice(options.language)
         report("voice", f"Reading the poem aloud ({voice})…")
         voice_path = out_dir / "voice.mp3"
-        _recite(
+        voice_path, line_timings = _recite(
             lines, voice, out_dir, voice_path, options.delivery,
             provider=options.voice_provider, language=options.language,
         )
@@ -733,32 +983,44 @@ def generate_poem_reel(
     else:
         duration = min(MAX_REEL_SECONDS, max(MIN_REEL_SECONDS, len(lines) * options.seconds_per_line))
 
+    windows = _segment_windows(segments, duration, line_timings, VOICE_LEAD_IN if options.narrate else 0.0)
+    durations = [max(0.6, end - start) for start, end in windows]
+
+    segments_dir = out_dir / "segments"
+    segments_dir.mkdir(parents=True, exist_ok=True)
+    segment_clips: list[Path] = []
+    for i, (segment_lines, segment_duration) in enumerate(zip(segments, durations)):
+        segment_card = segments_dir / f"card_{i:02d}.png"
+        render_poem_card(
+            background, segment_lines, segment_card, options.size, options.handle, options.text_scale,
+            avatar_file, poet_name,
+        )
+        if i == 0:
+            # card.png is the thumbnail/first-frame reference other code expects to find.
+            shutil.copyfile(segment_card, out_dir / "card.png")
+            card = out_dir / "card.png"
+        segment_clip = segments_dir / f"clip_{i:02d}.mp4"
+        build_card_clip(segment_card, segment_duration, segment_clip, size=options.size, music_volume=0, motion=False, fade_edges=False)
+        segment_clips.append(segment_clip)
+
     report("video", f"Building a {duration:.0f}s reel…")
+    silent = out_dir / "reel_silent.mp4"
+    _concat_segments(segment_clips, durations, silent, options.size, options.transition, options.transition_seconds)
+
     if voice_path is not None:
         padded = _pad_voice(voice_path, out_dir / "voice_padded.m4a", VOICE_LEAD_IN, duration)
-        mixed = out_dir / "reel_audio.m4a"
+        audio_track = out_dir / "reel_audio.m4a"
         add_background_ambience(
             padded,
-            mixed,
+            audio_track,
             duration,
             ambience_volume=0.0,
             music_volume=options.music_volume,
             music_file=options.music_file,
         )
-        silent = out_dir / "reel_silent.mp4"
-        build_card_clip(card, duration, silent, size=options.size, music_volume=0, motion=False, fade_edges=False)
-        mux_audio_video(silent, mixed, video_path)
     else:
-        build_card_clip(
-            card,
-            duration,
-            video_path,
-            size=options.size,
-            music_file=options.music_file,
-            music_volume=options.music_volume,
-            motion=False,
-            fade_edges=False,
-        )
+        audio_track = _build_music_track(duration, out_dir / "reel_audio.m4a", options.music_file, options.music_volume)
+    mux_audio_video(silent, audio_track, video_path)
 
     caption = plan["caption"].strip()
     hashtags = " ".join(dict.fromkeys(plan["hashtags"].split())).strip()
