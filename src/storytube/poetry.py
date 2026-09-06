@@ -99,8 +99,8 @@ DEFAULT_POEM_VOICE = "en-IN-PrabhatNeural"
 def default_poem_voice(language: str) -> str:
     return POEM_VOICES.get(language.strip().lower(), DEFAULT_POEM_VOICE)
 FALLBACK_HASHTAGS = (
-    "#poetry #shayari #poem #poetrycommunity #writersofinstagram "
-    "#poetsofinstagram #words #verse #spokenword #lines"
+    "#quotes #quoteoftheday #reels #instareels #wordsofwisdom "
+    "#deepthoughts #thoughtoftheday #shortvideo #shareit #instagood"
 )
 
 DEVANAGARI_FONTS = [
