@@ -56,6 +56,8 @@ models licensed for commercial use — so the videos are safe to monetise.
 - **ffmpeg with libass** — the plain Homebrew `ffmpeg` formula cannot burn subtitles
 - **A Gemini API key** — the free tier is enough for scene planning
 - **Disk space** — about 35 GB if you use the local image and voice models
+- **ngrok** (optional) — only needed to post reels to Instagram with an Instagram Login access
+  token; see [Publishing to Instagram and YouTube](#publishing-to-instagram-and-youtube)
 
 ---
 
@@ -174,6 +176,10 @@ generated scene, and download or delete actions. Filter by **Reels & Shorts**, *
 Eligible reels (portrait or square, 3 minutes or under) show **Post** and **Shorts** buttons
 directly on the card — no menu-hunting. **Music** re-renders an existing video with a different
 background track, reusing the cached images and voice-over so it finishes in under a minute.
+A freshly generated video is only a **draft** until you explicitly **Save** it or post it —
+leaving without saving discards it, so half-finished experiments never pile up. Turn on
+**Select** to multi-select several outputs and delete them together, with one confirmation
+before anything is removed.
 
 **Prompts** — edit the scene-planning template per category. Every save is version-archived so
 you can roll back. You can also create new categories here.
@@ -194,19 +200,33 @@ The form is deliberately short: the poem, the background, and the music. Everyth
 handle, shape, music volume, pacing, style prompt and image seed — lives under **Advanced** and
 is remembered between reels.
 
-**Background** offers two paths:
+**Background** offers three paths:
 
 - **My own photo** — drag in any JPG, PNG, WEBP or HEIC. **Adjust crop** opens a frame in your
   reel's exact shape; drag the picture and zoom to choose what stays. A shaded band shows where
   the poem will sit so you can keep faces clear of the text. This takes about ten seconds.
+- **Templates** — pick from 20 curated backgrounds, each pre-paired with a fitting music track
+  (still changeable below). Also instant, and already framed for the reel's shape, so there is
+  no crop step. **Shuffle** jumps to a different one.
 - **Generate** — Gemini designs an image to match the poem's mood and FLUX draws it. This takes
   a few minutes.
 
-Gemini also writes the caption and hashtags, saved alongside the video as `caption.txt`.
+Gemini also writes the caption and hashtags, saved alongside the video as `caption.txt`, tuned
+to what the text actually is — a poem, a movie or book quote, song lyrics — rather than always
+assuming poetry.
 
 Urdu is set in Nastaliq and Hindi in Devanagari. Line breaks are preserved: the type shrinks to
-fit rather than wrapping, because wrapping a verse destroys its metre. Characters no font can
-draw, such as emoji, are dropped from the image and kept in the caption.
+fit rather than wrapping, because wrapping a verse destroys its metre. Emoji are drawn in full
+colour inline with the text; any other character no font can draw is dropped from the image and
+kept in the caption. When you are sharing someone else's words, **Poem is by** in Advanced adds
+a small "shared from" credit with the poet's portrait above the first line.
+
+**Reveal lines gradually** (off by default, under Advanced) splits the poem into pages of a few
+lines each and shows them one after another instead of all at once, with a **Cut** or **Fade**
+transition between pages. Narrated reels time each page to the words actually being spoken;
+without narration, time is split by how many lines each page shows. Before building anything,
+the review dialog renders the real card image(s) for your current settings — text, background,
+avatar, emoji and all — so you can check how it looks on a still image first.
 
 **Voice-over** is optional — flip to *Read the poem aloud* and pick a reader. Only readers that
 can actually speak the poem's script are listed (Urdu-script text only offers Urdu readers, and
@@ -246,8 +266,19 @@ Download button, since neither platform's short-form format accepts them).
 
 Add `IG_USER_ID` and `IG_ACCESS_TOKEN` in Settings, then **Test connection** confirms the token
 and account resolve to a Business or Creator account (personal accounts cannot publish through
-the API). Reels upload straight from your Mac using Meta's resumable upload — no public URL or
-tunnel needed. Once posted, the same button becomes **Insights**: views, reach, likes, comments,
+the API). How the video reaches Instagram depends on which kind of token you have:
+
+- **Facebook Login for Business** (`graph.facebook.com`) — the reel streams straight from your
+  Mac using Meta's resumable upload. No public URL needed.
+- **Instagram Login** (`graph.instagram.com` — the common case for a token generated straight
+  against your Instagram account) — Meta only accepts a public `video_url` for this token type,
+  since there is no resumable-upload option for it. The app opens a short-lived
+  [ngrok](https://ngrok.com) tunnel to its own `output/` folder and gives Instagram that link
+  instead, closing the tunnel once Instagram has fetched the file. Install ngrok
+  (`brew install ngrok`) and run `ngrok config add-authtoken <token>` once (free) before posting
+  with this kind of token — posting will otherwise fail asking for a `video_url`.
+
+Either way, once posted the same button becomes **Insights**: views, reach, likes, comments,
 saves and shares.
 
 Instagram's API has no delete endpoint, so publishing is final — a post can only be removed by
@@ -380,6 +411,7 @@ src/storytube/
   tts_elevenlabs.py   ElevenLabs API
   poetry.py           poetry reel generation (typography, narration, video)
   instagram.py        Instagram Graph API: publish + insights
+  tunnel.py           short-lived ngrok tunnel, used when Instagram needs a public video_url
   youtube.py          YouTube OAuth connect, Shorts upload, thumbnail, analytics
   assemble.py         all ffmpeg work
   captions.py         SRT building
