@@ -460,6 +460,7 @@ def instagram_status(name: str, refresh: bool = False) -> dict:
             )
             state["stats"] = insights["stats"]
             state["permalink"] = insights["permalink"] or state.get("permalink", "")
+            state["insights_error"] = insights.get("insights_error") or ""
             state["stats_at"] = datetime.now().isoformat(timespec="seconds")
             instagram.write_state(story_dir, state)
         except instagram.InstagramError as exc:

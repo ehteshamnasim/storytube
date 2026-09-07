@@ -975,7 +975,7 @@ async function startPublish() {
 
   const percents = isYoutube
     ? { container: 20, uploading: 60, thumbnail: 85, done: 100 }
-    : { checking: 10, container: 25, uploading: 55, processing: 80, publishing: 92, done: 100 };
+    : { checking: 10, tunnel: 20, container: 30, uploading: 55, processing: 80, publishing: 92, done: 100 };
   const doneLabel = isYoutube ? "Posted to YouTube" : "Posted to Instagram";
   let thumbnailNote = "";
   const { job_id } = await res.json();
@@ -1082,8 +1082,9 @@ async function loadInsights(name, refresh, platform = "instagram") {
     if (!res.ok) throw new Error(data.detail || "Could not load insights.");
 
     const shown = renderInsights(data, platform);
+    const partialNote = data.insights_error ? ` Some numbers are missing: ${data.insights_error}` : "";
     note.textContent = shown
-      ? `Updated ${formatDate(data.stats_at) || "just now"}. ${platformName} takes a while to report numbers on a new post.`
+      ? `Updated ${formatDate(data.stats_at) || "just now"}. ${platformName} takes a while to report numbers on a new post.${partialNote}`
       : `${platformName} has no numbers for this post yet. Try again in a few minutes.`;
   } catch (err) {
     // A failed refresh must not blank out figures we already have on disk.

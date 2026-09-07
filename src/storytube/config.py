@@ -16,6 +16,8 @@ _SECRET_KEYS = {
 }
 _PATH_DEFAULTS = {"OUTPUT_DIR": "output", "PROMPTS_DIR": "prompts", "STORIES_DIR": "stories"}
 
+WEB_PORT = int(os.environ.get("WEB_PORT", "8420"))
+
 _FFMPEG_FULL = Path("/opt/homebrew/opt/ffmpeg-full/bin")
 FFMPEG_BIN = os.environ.get(
     "FFMPEG_BIN",

@@ -9,6 +9,8 @@ from typing import Callable, Optional
 
 import requests
 
+from . import config, tunnel as tunnel_module
+
 GRAPH_VERSION = "v23.0"
 # Instagram Login issues tokens for graph.instagram.com, Facebook Login for graph.facebook.com.
 GRAPH_HOSTS = ("https://graph.instagram.com", "https://graph.facebook.com")
@@ -22,6 +24,7 @@ POLL_ATTEMPTS = 60
 STATE_FILE = "instagram.json"
 
 INSIGHT_METRICS = ["views", "reach", "likes", "comments", "saved", "shares"]
+
 
 
 class InstagramError(RuntimeError):
@@ -99,35 +102,13 @@ def _working_host(user_id: str, token: str) -> str:
     return test_connection(user_id, token)["host"]
 
 
-def publish_reel(
-    video_path: Path,
-    caption: str,
-    user_id: str,
-    token: str,
-    share_to_feed: bool = True,
-    is_ai_generated: bool = True,
-    on_progress: Optional[Callable[[str, str], None]] = None,
-) -> dict:
-    """Upload a local MP4 as a reel. Uses resumable upload so no public URL is needed."""
-
-    def report(stage: str, message: str) -> None:
-        if on_progress:
-            on_progress(stage, message)
-
-    if not video_path.is_file():
-        raise InstagramError("That video no longer exists on disk.")
-
-    user_id, token = user_id.strip(), token.strip()
-    report("checking", "Checking your Instagram account…")
-    account = test_connection(user_id, token)
-    if not account["can_publish"]:
-        raise InstagramError(
-            f"@{account['username']} is a {account['account_type']} account. "
-            "Only Business or Creator accounts can publish through the API."
-        )
-    host = account["host"]
-
-    report("container", "Creating the post…")
+def _create_container_resumable(
+    host: str, user_id: str, token: str, video_path: Path, caption: str,
+    share_to_feed: bool, is_ai_generated: bool, report: Callable[[str, str], None],
+) -> str:
+    """Facebook Login accounts (graph.facebook.com) can stream the file straight to Meta -
+    resumable upload is only documented for that login type, so this path is never tried
+    for an Instagram Login (graph.instagram.com) token."""
     container = _post(
         host,
         f"{user_id}/media",
@@ -164,18 +145,110 @@ def publish_reel(
     if upload.status_code >= 400 or not result.get("success", True):
         detail = result.get("debug_info", {}).get("message") or result.get("error", {}).get("message")
         raise InstagramError(f"Upload rejected: {detail or upload.status_code}")
+    return container_id
 
-    report("processing", "Instagram is processing the video…")
-    for _ in range(POLL_ATTEMPTS):
-        status = _get(host, container_id, token, {"fields": "status_code,status"})
-        code = status.get("status_code")
-        if code == "FINISHED":
-            break
-        if code in ("ERROR", "EXPIRED"):
-            raise InstagramError(f"Instagram could not process the video: {status.get('status', code)}")
-        time.sleep(POLL_SECONDS)
-    else:
+
+def _create_container_via_url(
+    host: str, user_id: str, token: str, video_path: Path, caption: str,
+    share_to_feed: bool, is_ai_generated: bool, report: Callable[[str, str], None],
+) -> str:
+    """Instagram Login accounts must give Meta a public URL to fetch the video from - this
+    machine only listens on localhost, so a short-lived ngrok tunnel stands in for real hosting."""
+    try:
+        relative = video_path.resolve().relative_to(config.OUTPUT_DIR.resolve())
+    except ValueError as exc:
+        raise InstagramError("That video is outside the outputs folder, so it cannot be linked publicly.") from exc
+
+    report("tunnel", "Opening a temporary public link for Instagram…")
+    link = tunnel_module.open_tunnel(config.WEB_PORT)
+    try:
+        video_url = f"{link.public_url}/output/{relative.as_posix()}"
+        report("container", "Creating the post…")
+        container = _post(
+            host,
+            f"{user_id}/media",
+            token,
+            {
+                "media_type": "REELS",
+                "video_url": video_url,
+                "caption": caption[:2200],
+                "share_to_feed": "true" if share_to_feed else "false",
+                "is_ai_generated": "true" if is_ai_generated else "false",
+            },
+        )
+        container_id = container.get("id")
+        if not container_id:
+            raise InstagramError("Instagram did not return an upload container.")
+
+        # Instagram fetches the file itself once the container exists, so the tunnel has to
+        # stay open until it either finishes downloading it or gives up.
+        report("processing", "Instagram is fetching the video…")
+        for _ in range(POLL_ATTEMPTS):
+            status = _get(host, container_id, token, {"fields": "status_code,status"})
+            code = status.get("status_code")
+            if code == "FINISHED":
+                return container_id
+            if code in ("ERROR", "EXPIRED"):
+                raise InstagramError(f"Instagram could not fetch or process the video: {status.get('status', code)}")
+            time.sleep(POLL_SECONDS)
         raise InstagramError("Instagram is still processing the video. Try publishing again shortly.")
+    finally:
+        link.close()
+
+
+def publish_reel(
+    video_path: Path,
+    caption: str,
+    user_id: str,
+    token: str,
+    share_to_feed: bool = True,
+    is_ai_generated: bool = True,
+    on_progress: Optional[Callable[[str, str], None]] = None,
+) -> dict:
+    """Upload a local MP4 as a reel.
+
+    Facebook Login accounts stream the file directly (resumable upload); Instagram Login
+    accounts have no such option and need a public video_url, so a temporary ngrok tunnel
+    stands in for real hosting.
+    """
+
+    def report(stage: str, message: str) -> None:
+        if on_progress:
+            on_progress(stage, message)
+
+    if not video_path.is_file():
+        raise InstagramError("That video no longer exists on disk.")
+
+    user_id, token = user_id.strip(), token.strip()
+    report("checking", "Checking your Instagram account…")
+    account = test_connection(user_id, token)
+    if not account["can_publish"]:
+        raise InstagramError(
+            f"@{account['username']} is a {account['account_type']} account. "
+            "Only Business or Creator accounts can publish through the API."
+        )
+    host = account["host"]
+
+    if host == "https://graph.facebook.com":
+        report("container", "Creating the post…")
+        container_id = _create_container_resumable(
+            host, user_id, token, video_path, caption, share_to_feed, is_ai_generated, report,
+        )
+        report("processing", "Instagram is processing the video…")
+        for _ in range(POLL_ATTEMPTS):
+            status = _get(host, container_id, token, {"fields": "status_code,status"})
+            code = status.get("status_code")
+            if code == "FINISHED":
+                break
+            if code in ("ERROR", "EXPIRED"):
+                raise InstagramError(f"Instagram could not process the video: {status.get('status', code)}")
+            time.sleep(POLL_SECONDS)
+        else:
+            raise InstagramError("Instagram is still processing the video. Try publishing again shortly.")
+    else:
+        container_id = _create_container_via_url(
+            host, user_id, token, video_path, caption, share_to_feed, is_ai_generated, report,
+        )
 
     report("publishing", "Publishing…")
     published = _post(host, f"{user_id}/media_publish", token, {"creation_id": container_id})
@@ -199,9 +272,14 @@ def publish_reel(
 
 
 def get_insights(media_id: str, user_id: str, token: str) -> dict:
-    """Engagement numbers for a published post. Metrics vary by media type, so failures are tolerated."""
+    """Engagement numbers for a published post. Metrics vary by media type, so a failure on
+    one call does not hide numbers the other one already got - but the reason is kept
+    instead of silently disappearing, so a real problem does not just look like "not ready yet"."""
     host = _working_host(user_id, token)
     stats: dict[str, int] = {}
+    permalink = ""
+    basic_error: Optional[str] = None
+    insights_error: Optional[str] = None
 
     try:
         basic = _get(host, media_id, token, {"fields": "like_count,comments_count,permalink"})
@@ -210,20 +288,22 @@ def get_insights(media_id: str, user_id: str, token: str) -> dict:
         if "comments_count" in basic:
             stats["comments"] = basic["comments_count"]
         permalink = basic.get("permalink", "")
-    except InstagramError:
-        permalink = ""
+    except InstagramError as exc:
+        basic_error = str(exc)
 
     try:
         insights = _get(host, f"{media_id}/insights", token, {"metric": ",".join(INSIGHT_METRICS)})
         for entry in insights.get("data", []):
             values = entry.get("values") or [{}]
             stats[entry["name"]] = values[0].get("value", 0)
-    except InstagramError:
-        pass
+    except InstagramError as exc:
+        insights_error = str(exc)
 
     if not stats:
-        raise InstagramError("Instagram returned no numbers for that post yet.")
-    return {"stats": stats, "permalink": permalink}
+        reason = insights_error or basic_error
+        raise InstagramError(f"Instagram has no numbers for this post yet.{f' ({reason})' if reason else ''}")
+    return {"stats": stats, "permalink": permalink, "insights_error": insights_error}
+
 
 
 def read_state(out_dir: Path) -> dict:
