@@ -211,7 +211,7 @@ def publish_reel(
     user_id: str,
     token: str,
     share_to_feed: bool = True,
-    is_ai_generated: bool = True,
+    is_ai_generated: bool = False,
     on_progress: Optional[Callable[[str, str], None]] = None,
 ) -> dict:
     """Upload a local MP4 as a reel.

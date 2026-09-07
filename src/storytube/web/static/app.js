@@ -825,6 +825,9 @@ function setupPublish() {
   $("publish-cancel").addEventListener("click", close);
   $("publish-overlay").addEventListener("click", close);
   $("publish-start").addEventListener("click", startPublish);
+  $("publish-ai-disclosure").addEventListener("change", (e) => {
+    localStorage.setItem("storytube.instagram.discloseAi", e.target.checked ? "true" : "false");
+  });
   $("publish-open-settings").addEventListener("click", () => {
     close();
     switchTab("settings");
@@ -899,6 +902,7 @@ async function openPublishModal(name, caption, platform = "instagram") {
   } else {
     $("publish-caption").value = caption || "";
     $("publish-caption").dispatchEvent(new Event("input"));
+    $("publish-ai-disclosure").checked = localStorage.getItem("storytube.instagram.discloseAi") === "true";
   }
 
   $("publish-progress-track").hidden = true;
@@ -963,7 +967,10 @@ async function startPublish() {
     : await fetch(`/api/outputs/${encodeURIComponent(name)}/instagram/publish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ caption: $("publish-caption").value }),
+        body: JSON.stringify({
+          caption: $("publish-caption").value,
+          is_ai_generated: $("publish-ai-disclosure").checked,
+        }),
       });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

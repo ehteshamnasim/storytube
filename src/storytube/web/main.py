@@ -441,7 +441,9 @@ def instagram_publish(name: str, payload: PublishRequest) -> dict:
         caption_path = story_dir / "caption.txt"
         caption = caption_path.read_text(encoding="utf-8") if caption_path.exists() else story_dir.name
 
-    job = jobs.create_instagram_job(story_dir.name, video, caption, story_dir, user_id, token)
+    job = jobs.create_instagram_job(
+        story_dir.name, video, caption, story_dir, user_id, token, payload.is_ai_generated,
+    )
     return {"job_id": job.id, "name": story_dir.name}
 
 

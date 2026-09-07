@@ -34,6 +34,7 @@ class RemixRequest(BaseModel):
 class PublishRequest(BaseModel):
     caption: str = ""
     force: bool = False
+    is_ai_generated: bool = False
 
 
 class BulkDeleteRequest(BaseModel):

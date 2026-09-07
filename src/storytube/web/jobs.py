@@ -55,12 +55,16 @@ class Job:
 
         self._run(work)
 
-    def start_instagram(self, video: Path, caption: str, out_dir: Path, user_id: str, token: str) -> None:
+    def start_instagram(
+        self, video: Path, caption: str, out_dir: Path, user_id: str, token: str, is_ai_generated: bool = False,
+    ) -> None:
         def work() -> Path:
             def on_progress(stage: str, message: str) -> None:
                 self.events.put({"type": "progress", "stage": stage, "message": message})
 
-            result = instagram.publish_reel(video, caption, user_id, token, on_progress=on_progress)
+            result = instagram.publish_reel(
+                video, caption, user_id, token, is_ai_generated=is_ai_generated, on_progress=on_progress,
+            )
             instagram.write_state(out_dir, result)
             self.events.put({"type": "progress", "stage": "done", "message": "Posted", **result})
             return video
@@ -111,11 +115,13 @@ def create_poem_job(name: str, poem_text: str, options: PoemOptions) -> Job:
     return job
 
 
-def create_instagram_job(name: str, video: Path, caption: str, out_dir: Path, user_id: str, token: str) -> Job:
+def create_instagram_job(
+    name: str, video: Path, caption: str, out_dir: Path, user_id: str, token: str, is_ai_generated: bool = False,
+) -> Job:
     job_id = uuid.uuid4().hex[:12]
     job = Job(job_id, name)
     _jobs[job_id] = job
-    job.start_instagram(video, caption, out_dir, user_id, token)
+    job.start_instagram(video, caption, out_dir, user_id, token, is_ai_generated)
     return job
 
 

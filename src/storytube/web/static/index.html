@@ -1065,7 +1065,11 @@
       <div class="field-row" id="publish-caption-row">
         <div class="label-row"><label for="publish-caption">Caption</label><span class="counter" id="publish-caption-count">0 / 2200</span></div>
         <textarea id="publish-caption" rows="9"></textarea>
-        <div class="help-text">Posted as a Reel. AI-generated content is disclosed to Meta automatically.</div>
+        <label class="checkbox-row">
+          <input type="checkbox" id="publish-ai-disclosure" />
+          <span>Disclose to Meta as AI-generated</span>
+        </label>
+        <div class="help-text">Off by default. Meta shows AI-disclosed reels with an "AI info" label to viewers.</div>
       </div>
 
       <div class="field-row" id="publish-title-row" hidden>
