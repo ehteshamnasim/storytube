@@ -18,7 +18,10 @@ RUPLOAD_HOST = "https://rupload.facebook.com/ig-api-upload"
 PUBLISHABLE_TYPES = {"BUSINESS", "MEDIA_CREATOR", "CREATOR"}
 TIMEOUT = 30
 UPLOAD_TIMEOUT = 600
-# Meta advise polling roughly once a minute for no more than five.
+# Most reels finish processing in well under a minute, so check quickly at first;
+# Meta advise polling roughly once a minute for no more than five once it is slow.
+POLL_FAST_SECONDS = 2
+POLL_FAST_ATTEMPTS = 15
 POLL_SECONDS = 5
 POLL_ATTEMPTS = 60
 STATE_FILE = "instagram.json"
@@ -102,6 +105,19 @@ def _working_host(user_id: str, token: str) -> str:
     return test_connection(user_id, token)["host"]
 
 
+def _poll_until_finished(host: str, container_id: str, token: str, failure_prefix: str) -> None:
+    delays = [POLL_FAST_SECONDS] * POLL_FAST_ATTEMPTS + [POLL_SECONDS] * POLL_ATTEMPTS
+    for delay in delays:
+        status = _get(host, container_id, token, {"fields": "status_code,status"})
+        code = status.get("status_code")
+        if code == "FINISHED":
+            return
+        if code in ("ERROR", "EXPIRED"):
+            raise InstagramError(f"{failure_prefix}: {status.get('status', code)}")
+        time.sleep(delay)
+    raise InstagramError("Instagram is still processing the video. Try publishing again shortly.")
+
+
 def _create_container_resumable(
     host: str, user_id: str, token: str, video_path: Path, caption: str,
     share_to_feed: bool, is_ai_generated: bool, report: Callable[[str, str], None],
@@ -183,15 +199,8 @@ def _create_container_via_url(
         # Instagram fetches the file itself once the container exists, so the tunnel has to
         # stay open until it either finishes downloading it or gives up.
         report("processing", "Instagram is fetching the video…")
-        for _ in range(POLL_ATTEMPTS):
-            status = _get(host, container_id, token, {"fields": "status_code,status"})
-            code = status.get("status_code")
-            if code == "FINISHED":
-                return container_id
-            if code in ("ERROR", "EXPIRED"):
-                raise InstagramError(f"Instagram could not fetch or process the video: {status.get('status', code)}")
-            time.sleep(POLL_SECONDS)
-        raise InstagramError("Instagram is still processing the video. Try publishing again shortly.")
+        _poll_until_finished(host, container_id, token, "Instagram could not fetch or process the video")
+        return container_id
     finally:
         link.close()
 
@@ -235,16 +244,7 @@ def publish_reel(
             host, user_id, token, video_path, caption, share_to_feed, is_ai_generated, report,
         )
         report("processing", "Instagram is processing the video…")
-        for _ in range(POLL_ATTEMPTS):
-            status = _get(host, container_id, token, {"fields": "status_code,status"})
-            code = status.get("status_code")
-            if code == "FINISHED":
-                break
-            if code in ("ERROR", "EXPIRED"):
-                raise InstagramError(f"Instagram could not process the video: {status.get('status', code)}")
-            time.sleep(POLL_SECONDS)
-        else:
-            raise InstagramError("Instagram is still processing the video. Try publishing again shortly.")
+        _poll_until_finished(host, container_id, token, "Instagram could not process the video")
     else:
         container_id = _create_container_via_url(
             host, user_id, token, video_path, caption, share_to_feed, is_ai_generated, report,
