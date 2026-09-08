@@ -79,6 +79,7 @@ class PoemRequest(BaseModel):
     lines_per_segment: int = 0
     transition: str = "cut"
     transition_seconds: float = 0.5
+    blur_background: bool = True
 
 
 class GenerateRequest(BaseModel):

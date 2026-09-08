@@ -275,6 +275,7 @@ class PoemOptions:
     lines_per_segment: int = 0
     transition: str = "cut"
     transition_seconds: float = 0.5
+    blur_background: bool = True
 
 
 @dataclass
@@ -739,6 +740,7 @@ def render_poem_card(
     text_scale: float = 1.0,
     avatar_file: Optional[Path] = None,
     poet_name: str = "",
+    blur_background: bool = True,
 ) -> Path:
     width, height = (int(p) for p in size.split("x"))
 
@@ -767,7 +769,7 @@ def render_poem_card(
         canvas.convert("RGB").save(out_path, quality=95)
         return out_path
 
-    canvas = base.filter(ImageFilter.GaussianBlur(width * 0.005)).convert("RGBA")
+    canvas = base.filter(ImageFilter.GaussianBlur(width * 0.005)).convert("RGBA") if blur_background else base.convert("RGBA")
     script = _script_of(" ".join(lines))
     measure = ImageDraw.Draw(canvas)
     font, rendered, line_height = _layout(measure, lines, script, width, height, text_scale)
@@ -1025,7 +1027,7 @@ def generate_poem_reel(
         segment_card = segments_dir / f"card_{i:02d}.png"
         render_poem_card(
             background, segment_lines, segment_card, options.size, options.handle, options.text_scale,
-            avatar_file, poet_name,
+            avatar_file, poet_name, options.blur_background,
         )
         if i == 0:
             # card.png is the thumbnail/first-frame reference other code expects to find.

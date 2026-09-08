@@ -1269,6 +1269,7 @@ function gatherPoemOptions() {
     lines_per_segment: parseInt($("poem-lines-per-segment").value, 10),
     transition: state.poemTransition || "cut",
     transition_seconds: parseFloat($("poem-transition-seconds").value),
+    blur_background: $("poem-blur-background").checked,
   };
 }
 
@@ -1286,6 +1287,7 @@ function savePoemPrefs() {
   prefs.delivery = state.poemDelivery || "recitation";
   prefs.provider = state.poemProvider || "edge";
   prefs.transition = state.poemTransition || "cut";
+  prefs.blurBackground = $("poem-blur-background").checked;
   try {
     localStorage.setItem(POEM_PREFS_KEY, JSON.stringify(prefs));
   } catch {
@@ -1323,6 +1325,7 @@ function loadPoemPrefs() {
     $("poem-voice").value = savedVoice;
   }
   if (prefs.music) $("poem-music-browser").dataset.selected = prefs.music;
+  if (prefs.blurBackground !== undefined) $("poem-blur-background").checked = prefs.blurBackground;
   $("poem-music-out").textContent = `${Math.round($("poem-music-volume").value * 100)}%`;
   $("poem-pace-out").textContent = `${Number($("poem-pace").value).toFixed(1)}s`;
   $("poem-seed-out").textContent = $("poem-seed").value;
@@ -1798,6 +1801,7 @@ function setupPoetry() {
     $(id).addEventListener("input", renderPoemPreview)
   );
   POEM_PREF_FIELDS.forEach((id) => $(id).addEventListener("change", savePoemPrefs));
+  $("poem-blur-background").addEventListener("change", savePoemPrefs);
 
   $("poem-pace").addEventListener("input", (e) => {
     $("poem-pace-out").textContent = `${Number(e.target.value).toFixed(1)}s`;

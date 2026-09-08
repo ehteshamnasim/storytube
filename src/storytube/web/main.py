@@ -416,6 +416,7 @@ def start_poem(payload: PoemRequest) -> dict:
         lines_per_segment=payload.lines_per_segment,
         transition=payload.transition,
         transition_seconds=payload.transition_seconds,
+        blur_background=payload.blur_background,
     )
     job = jobs.create_poem_job(name, "\n".join(lines), options)
     return {"job_id": job.id, "name": name, "lines": lines}
@@ -687,7 +688,7 @@ def preview_poem(payload: PoemRequest) -> dict:
         filename = f"segment_{i:02d}.png"
         render_poem_card(
             prepared_bg, segment, POEM_PREVIEW_DIR / filename, payload.size, payload.handle, payload.text_scale,
-            avatar_file, poet_name,
+            avatar_file, poet_name, payload.blur_background,
         )
         images.append(f"/output/_preview/{filename}?t={stamp}")
 
