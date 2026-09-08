@@ -15,6 +15,7 @@ from .. import config
 from ..assemble import get_audio_duration
 from .. import instagram
 from .. import youtube
+from ..analytics import collect_posted
 from ..pipeline import PipelineOptions
 from ..poetry import (
     MAX_POEM_CHARS,
@@ -255,6 +256,14 @@ def list_outputs() -> dict:
         )
     results.sort(key=lambda r: r["modified_at"], reverse=True)
     return {"outputs": results}
+
+
+@app.get("/api/analytics")
+def analytics() -> dict:
+    """Everything posted so far, with the text, music and platform numbers already saved
+    on disk - no live API calls, so this is instant."""
+    entries = collect_posted(config.OUTPUT_DIR)
+    return {"entries": entries}
 
 
 PREVIEW_DIR = Path("output/_voice_previews")
@@ -641,7 +650,7 @@ def resolve_poem_background(payload: "PoemRequest") -> Optional[Path]:
     return None
 
 
-PREVIEW_DIR = config.OUTPUT_DIR / "_preview"
+POEM_PREVIEW_DIR = config.OUTPUT_DIR / "_preview"
 
 
 @app.post("/api/poem/preview")
@@ -665,8 +674,8 @@ def preview_poem(payload: PoemRequest) -> dict:
             avatar_file = POET_AVATARS_DIR / poet["file"]
             poet_name = poet["label"]
 
-    PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
-    prepared_bg = PREVIEW_DIR / "background.png"
+    POEM_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    prepared_bg = POEM_PREVIEW_DIR / "background.png"
     prepare_background(background_file, prepared_bg, payload.size, payload.focus_x, payload.focus_y, payload.zoom)
 
     segments = _segment_lines(lines, payload.lines_per_segment)
@@ -675,7 +684,7 @@ def preview_poem(payload: PoemRequest) -> dict:
     for i, segment in enumerate(segments):
         filename = f"segment_{i:02d}.png"
         render_poem_card(
-            prepared_bg, segment, PREVIEW_DIR / filename, payload.size, payload.handle, payload.text_scale,
+            prepared_bg, segment, POEM_PREVIEW_DIR / filename, payload.size, payload.handle, payload.text_scale,
             avatar_file, poet_name,
         )
         images.append(f"/output/_preview/{filename}?t={stamp}")

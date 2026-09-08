@@ -11,38 +11,14 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
+import sys
 from datetime import datetime
 from pathlib import Path
-
-import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from storytube import config  # noqa: E402
-
-
-def load_json(path: Path) -> dict:
-    if not path.is_file():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def written_text(out_dir: Path) -> str:
-    poem_file = out_dir / "poem.txt"
-    if poem_file.is_file():
-        return poem_file.read_text(encoding="utf-8").strip()
-
-    caption_file = out_dir / "caption.txt"
-    if caption_file.is_file():
-        return caption_file.read_text(encoding="utf-8").strip()
-
-    scenes = load_json(out_dir / "scenes.json")
-    lines = [s.get("narration", "") for s in scenes.get("scenes", [])]
-    return "\n".join(line for line in lines if line).strip()
+from storytube.analytics import collect_posted  # noqa: E402
 
 
 def instagram_row(state: dict) -> str:
@@ -76,45 +52,35 @@ def youtube_row(state: dict) -> str:
 
 
 def build_report(output_dir: Path) -> str:
-    posted_dirs = sorted(
-        d for d in output_dir.iterdir()
-        if d.is_dir() and ((d / "instagram.json").is_file() or (d / "youtube.json").is_file())
-    )
-
-    ig_count = sum(1 for d in posted_dirs if (d / "instagram.json").is_file())
-    yt_count = sum(1 for d in posted_dirs if (d / "youtube.json").is_file())
+    entries = collect_posted(output_dir)
+    ig_count = sum(1 for e in entries if e["instagram"])
+    yt_count = sum(1 for e in entries if e["youtube"])
 
     lines = [
         "# Storytube analytics report",
         "",
-        f"Generated {datetime.now():%Y-%m-%d %H:%M} · {len(posted_dirs)} posted outputs "
+        f"Generated {datetime.now():%Y-%m-%d %H:%M} · {len(entries)} posted outputs "
         f"({ig_count} on Instagram, {yt_count} on YouTube)",
         "",
     ]
 
-    for out_dir in posted_dirs:
-        meta = load_json(out_dir / "meta.json")
-        ig_state = load_json(out_dir / "instagram.json")
-        yt_state = load_json(out_dir / "youtube.json")
-        text = written_text(out_dir)
-        music = Path(meta.get("music_file", "")).stem.replace("_", " ") if meta.get("music_file") else ""
-
-        lines.append(f"## {out_dir.name}")
+    for entry in entries:
+        lines.append(f"## {entry['name']}")
         lines.append("")
-        if text:
+        if entry["text"]:
             lines.append("**Written:**")
             lines.append("")
-            for line in text.splitlines():
+            for line in entry["text"].splitlines():
                 lines.append(f"> {line}" if line.strip() else ">")
             lines.append("")
-        lines.append(f"**Music:** {music or 'none'}")
+        lines.append(f"**Music:** {entry['music'] or 'none'}")
         lines.append("")
         lines.append("| Platform | Title/Link | Views | Likes | Comments | Other |")
         lines.append("|---|---|---|---|---|---|")
-        if ig_state:
-            lines.append(instagram_row(ig_state))
-        if yt_state:
-            lines.append(youtube_row(yt_state))
+        if entry["instagram"]:
+            lines.append(instagram_row(entry["instagram"]))
+        if entry["youtube"]:
+            lines.append(youtube_row(entry["youtube"]))
         lines.append("")
         lines.append("---")
         lines.append("")

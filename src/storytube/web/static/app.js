@@ -244,7 +244,7 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAllSe
 
 /* ---------------- Tabs ---------------- */
 
-const TABS = ["story", "poetry", "prompts", "settings", "outputs"];
+const TABS = ["story", "poetry", "prompts", "settings", "outputs", "analytics"];
 
 function setupTabs() {
   document.querySelectorAll(".nav-item").forEach((btn) => {
@@ -270,6 +270,7 @@ function switchTab(tab) {
   if (tab === "settings") loadSettings();
   if (tab === "prompts") loadPromptCategories();
   if (tab === "outputs") loadOutputs();
+  if (tab === "analytics") loadAnalytics();
   window.scrollTo({ top: 0, behavior: "instant" });
 }
 
@@ -3072,6 +3073,97 @@ async function saveSettings() {
 }
 
 
+async function loadAnalytics() {
+  const list = $("analytics-list");
+  list.innerHTML = `<div class="empty-state"><span class="empty-icon">${icon("loader-circle", 24)}</span><p>Loading…</p></div>`;
+  refreshIcons();
+
+  const res = await fetch("/api/analytics");
+  const data = await res.json();
+  const entries = data.entries || [];
+
+  const totals = entries.reduce(
+    (acc, e) => {
+      if (e.instagram) {
+        acc.instagramPosts += 1;
+        acc.instagramViews += Number(e.instagram.stats?.views || 0);
+      }
+      if (e.youtube) {
+        acc.youtubePosts += 1;
+        acc.youtubeViews += Number(e.youtube.stats?.viewCount ?? e.youtube.analytics?.views ?? 0);
+      }
+      return acc;
+    },
+    { instagramPosts: 0, instagramViews: 0, youtubePosts: 0, youtubeViews: 0 }
+  );
+
+  $("analytics-stats").innerHTML = [
+    ["send", entries.length, "Total posted"],
+    ["camera", totals.instagramPosts, "On Instagram"],
+    ["eye", totals.instagramViews, "Instagram views"],
+    ["monitor-play", totals.youtubePosts, "On YouTube"],
+    ["eye", totals.youtubeViews, "YouTube views"],
+  ].map(([iconName, value, label]) => `
+    <div class="stat-card">
+      <span class="stat-icon">${icon(iconName, 18)}</span>
+      <div><div class="stat-value">${value}</div><div class="stat-label">${label}</div></div>
+    </div>`).join("");
+
+  if (!entries.length) {
+    list.innerHTML = `<div class="empty-state">
+      <span class="empty-icon">${icon("bar-chart-3", 24)}</span>
+      <strong>Nothing posted yet</strong>
+      <p>Once you post a reel or video to Instagram or YouTube, it shows up here with its text, music and numbers.</p>
+    </div>`;
+    refreshIcons();
+    return;
+  }
+
+  list.innerHTML = entries.map(analyticsCardHtml).join("");
+  refreshIcons();
+}
+
+function analyticsCardHtml(entry) {
+  const ig = entry.instagram;
+  const yt = entry.youtube;
+  const igStats = ig?.stats || {};
+  const ytStats = yt?.stats || {};
+  const ytAnalytics = yt?.analytics || {};
+
+  const igPlatform = ig ? `
+    <a class="analytics-platform" href="${ig.permalink || "#"}" target="_blank" rel="noopener">
+      <span class="analytics-platform-icon">${icon("camera", 15)}</span>
+      <div class="analytics-platform-stats">
+        <span><strong>${igStats.views ?? "—"}</strong> views</span>
+        <span><strong>${igStats.likes ?? "—"}</strong> likes</span>
+        <span><strong>${igStats.comments ?? "—"}</strong> comments</span>
+        <span>${igStats.reach ?? "—"} reach · ${igStats.saved ?? "—"} saved · ${igStats.shares ?? "—"} shares</span>
+      </div>
+    </a>` : "";
+
+  const ytPlatform = yt ? `
+    <a class="analytics-platform" href="${yt.url || "#"}" target="_blank" rel="noopener">
+      <span class="analytics-platform-icon">${icon("monitor-play", 15)}</span>
+      <div class="analytics-platform-stats">
+        <span><strong>${ytStats.viewCount ?? ytAnalytics.views ?? "—"}</strong> views</span>
+        <span><strong>${ytStats.likeCount ?? ytAnalytics.likes ?? "—"}</strong> likes</span>
+        <span><strong>${ytStats.commentCount ?? ytAnalytics.comments ?? "—"}</strong> comments</span>
+        ${ytAnalytics.estimatedMinutesWatched !== undefined ? `<span>${ytAnalytics.estimatedMinutesWatched} min watched · avg ${ytAnalytics.averageViewDuration ?? "—"}s</span>` : ""}
+      </div>
+    </a>` : "";
+
+  return `
+    <div class="analytics-card">
+      <div class="analytics-card-header">
+        <div class="analytics-card-title">${escapeHtml(titleCase(entry.name))}</div>
+        <span class="mini-note">${formatDate(entry.created_at) || ""}</span>
+      </div>
+      ${entry.text ? `<blockquote class="analytics-text">${escapeHtml(entry.text)}</blockquote>` : ""}
+      ${entry.music ? `<div class="analytics-music">${icon("music", 13)} ${escapeHtml(titleCase(entry.music))}</div>` : ""}
+      <div class="analytics-platforms">${igPlatform}${ytPlatform}</div>
+    </div>`;
+}
+
 async function loadOutputs() {
   $("outputs-skeleton").classList.remove("hidden");
   $("outputs-list").classList.add("hidden");
@@ -3560,6 +3652,10 @@ function setupOutputsToolbar() {
   $("outputs-refresh-btn").addEventListener("click", async () => {
     await loadOutputs();
     toast("Outputs refreshed");
+  });
+  $("analytics-refresh-btn").addEventListener("click", async () => {
+    await loadAnalytics();
+    toast("Analytics refreshed");
   });
 
   $("outputs-select-toggle").addEventListener("click", () => setOutputsSelectMode(true));

@@ -35,6 +35,10 @@
           <span class="nav-label">Outputs</span>
           <span class="nav-count" id="nav-outputs-count"></span>
         </button>
+        <button class="nav-item" data-tab="analytics">
+          <span class="nav-icon"><i data-lucide="bar-chart-3"></i></span>
+          <span class="nav-label">Analytics</span>
+        </button>
         <button class="nav-item" data-tab="prompts">
           <span class="nav-icon"><i data-lucide="file-text"></i></span>
           <span class="nav-label">Prompts</span>
@@ -598,6 +602,29 @@
             </div>
 
             <div id="outputs-list" class="outputs-grid"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= ANALYTICS ================= -->
+      <section class="tab hidden" id="tab-analytics">
+        <header class="page-header">
+          <div class="page-title-wrap">
+            <span class="page-icon"><i data-lucide="bar-chart-3"></i></span>
+            <div>
+              <h1>Analytics</h1>
+              <p class="page-subtitle">Everything you've posted, with its text, music and platform numbers in one place.</p>
+            </div>
+          </div>
+          <div class="page-header-actions">
+            <button class="btn-ghost" id="analytics-refresh-btn"><i data-lucide="refresh-cw"></i> Refresh</button>
+          </div>
+        </header>
+
+        <div class="page-body">
+          <div class="stat-row" id="analytics-stats"></div>
+          <div class="card panel-card">
+            <div id="analytics-list" class="analytics-list"></div>
           </div>
         </div>
       </section>
