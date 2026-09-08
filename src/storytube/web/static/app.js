@@ -3098,14 +3098,14 @@ async function loadAnalytics() {
   );
 
   $("analytics-stats").innerHTML = [
-    ["send", entries.length, "Total posted"],
-    ["camera", totals.instagramPosts, "On Instagram"],
-    ["eye", totals.instagramViews, "Instagram views"],
-    ["monitor-play", totals.youtubePosts, "On YouTube"],
-    ["eye", totals.youtubeViews, "YouTube views"],
-  ].map(([iconName, value, label]) => `
+    [icon("send", 18), entries.length, "Total posted"],
+    [brandIcon("instagram", 18), totals.instagramPosts, "On Instagram"],
+    [icon("eye", 18), totals.instagramViews, "Instagram views"],
+    [brandIcon("youtube", 18), totals.youtubePosts, "On YouTube"],
+    [icon("eye", 18), totals.youtubeViews, "YouTube views"],
+  ].map(([iconHtml, value, label]) => `
     <div class="stat-card">
-      <span class="stat-icon">${icon(iconName, 18)}</span>
+      <span class="stat-icon">${iconHtml}</span>
       <div><div class="stat-value">${value}</div><div class="stat-label">${label}</div></div>
     </div>`).join("");
 
@@ -3123,27 +3123,47 @@ async function loadAnalytics() {
   refreshIcons();
 }
 
+const BRAND_ICON_PATHS = {
+  instagram: '<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="1.1" fill="currentColor" stroke="none"/>',
+  youtube: '<rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path d="M10.5 9.3v5.4l4.7-2.7z" fill="currentColor" stroke="none"/>',
+};
+
+function brandIcon(name, size = 15) {
+  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${BRAND_ICON_PATHS[name]}</svg>`;
+}
+
+function analyticsTitle(entry) {
+  const stripped = entry.name.replace(/^(poem|story)_/i, "");
+  if (/^\d{8}_\d{6}$/.test(stripped) && entry.text) {
+    const firstLine = entry.text.split("\n")[0].trim();
+    return firstLine.length > 60 ? `${firstLine.slice(0, 100)}…` : firstLine;
+  }
+  return titleCase(stripped);
+}
+
 function analyticsCardHtml(entry) {
   const ig = entry.instagram;
   const yt = entry.youtube;
-  const igStats = ig?.stats || {};
+  const igStats = ig?.stats;
   const ytStats = yt?.stats || {};
   const ytAnalytics = yt?.analytics || {};
 
   const igPlatform = ig ? `
     <a class="analytics-platform" href="${ig.permalink || "#"}" target="_blank" rel="noopener">
-      <span class="analytics-platform-icon">${icon("camera", 15)}</span>
-      <div class="analytics-platform-stats">
-        <span><strong>${igStats.views ?? "—"}</strong> views</span>
-        <span><strong>${igStats.likes ?? "—"}</strong> likes</span>
-        <span><strong>${igStats.comments ?? "—"}</strong> comments</span>
-        <span>${igStats.reach ?? "—"} reach · ${igStats.saved ?? "—"} saved · ${igStats.shares ?? "—"} shares</span>
-      </div>
+      <span class="analytics-platform-icon">${brandIcon("instagram", 15)}</span>
+      ${igStats ? `
+        <div class="analytics-platform-stats">
+          <span><strong>${igStats.views ?? "—"}</strong> views</span>
+          <span><strong>${igStats.likes ?? "—"}</strong> likes</span>
+          <span><strong>${igStats.comments ?? "—"}</strong> comments</span>
+          <span>${igStats.reach ?? "—"} reach · ${igStats.saved ?? "—"} saved · ${igStats.shares ?? "—"} shares</span>
+        </div>` : `
+        <div class="analytics-platform-stats"><span>Posted, numbers not fetched yet \u2014 open Insights on Outputs to refresh</span></div>`}
     </a>` : "";
 
   const ytPlatform = yt ? `
     <a class="analytics-platform" href="${yt.url || "#"}" target="_blank" rel="noopener">
-      <span class="analytics-platform-icon">${icon("monitor-play", 15)}</span>
+      <span class="analytics-platform-icon">${brandIcon("youtube", 15)}</span>
       <div class="analytics-platform-stats">
         <span><strong>${ytStats.viewCount ?? ytAnalytics.views ?? "—"}</strong> views</span>
         <span><strong>${ytStats.likeCount ?? ytAnalytics.likes ?? "—"}</strong> likes</span>
@@ -3155,7 +3175,7 @@ function analyticsCardHtml(entry) {
   return `
     <div class="analytics-card">
       <div class="analytics-card-header">
-        <div class="analytics-card-title">${escapeHtml(titleCase(entry.name))}</div>
+        <div class="analytics-card-title">${escapeHtml(analyticsTitle(entry))}</div>
         <span class="mini-note">${formatDate(entry.created_at) || ""}</span>
       </div>
       ${entry.text ? `<blockquote class="analytics-text">${escapeHtml(entry.text)}</blockquote>` : ""}
@@ -3163,6 +3183,7 @@ function analyticsCardHtml(entry) {
       <div class="analytics-platforms">${igPlatform}${ytPlatform}</div>
     </div>`;
 }
+
 
 async function loadOutputs() {
   $("outputs-skeleton").classList.remove("hidden");
