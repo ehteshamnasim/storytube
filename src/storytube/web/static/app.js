@@ -1185,7 +1185,12 @@ function poemWarnings(lines) {
   const chars = $("poem-text").value.length;
   const usingOwnImage = hasInstantBackground();
 
-  if (!lines.length) warnings.push(["danger", "Write a line or two of poetry first."]);
+  if (!lines.length && !usingOwnImage) {
+    warnings.push(["danger", "Write a line or two of poetry first, or choose a photo to post without any text."]);
+  }
+  if (!lines.length && usingOwnImage) {
+    warnings.push(["info", "No text added \u2014 this will post just the photo, with no quote on it."]);
+  }
   if (chars > POEM_LIMITS.max_chars) {
     warnings.push(["danger", `That is ${chars} characters. Keep it under ${POEM_LIMITS.max_chars} so the words stay readable.`]);
   }
@@ -1225,6 +1230,9 @@ function poemWarnings(lines) {
 
   if (state.poemNarrate && lines.length && state.poemProvider !== "elevenlabs" && !readersFor(scriptOf(lines.join(" "))).length) {
     warnings.push(["danger", "No free reader can read this script yet. Turn the voice-over off to carry on."]);
+  }
+  if (state.poemNarrate && !lines.length) {
+    warnings.push(["info", "There is no text to read aloud, so narration will be skipped."]);
   }
   return warnings;
 }
@@ -2056,11 +2064,11 @@ async function openPoemReview() {
 
   $("poem-review-lines").innerHTML = lines.length
     ? lines.map((l) => `<div class="poem-line" dir="auto">${escapeHtml(l)}</div>`).join("")
-    : `<span class="poem-preview-empty">Nothing to draw yet</span>`;
+    : `<span class="poem-preview-empty">No text — just the photo</span>`;
 
   const opts = gatherPoemOptions();
   const usingOwnImage = hasInstantBackground();
-  if (usingOwnImage && lines.length) {
+  if (usingOwnImage) {
     loadPoemCardPreview(opts);
   } else {
     $("poem-card-preview").hidden = true;

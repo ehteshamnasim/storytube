@@ -380,12 +380,13 @@ def remix_output(name: str, payload: RemixRequest) -> dict:
 
 @app.post("/api/poem")
 def start_poem(payload: PoemRequest) -> dict:
+    background_file = resolve_poem_background(payload)
     try:
-        lines = clean_poem(payload.poem_text)
+        lines = clean_poem(payload.poem_text, allow_empty=background_file is not None)
     except PoemError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    base = safe_slug(payload.name) if payload.name.strip() else poem_folder_name(lines[0])
+    base = safe_slug(payload.name) if payload.name.strip() else poem_folder_name(lines[0] if lines else "")
     name = base
     counter = 2
     while (config.OUTPUT_DIR / name).exists() and not payload.force_image:
@@ -402,7 +403,7 @@ def start_poem(payload: PoemRequest) -> dict:
         handle=payload.handle.strip(),
         seed=payload.seed,
         force_image=payload.force_image,
-        background_file=resolve_poem_background(payload),
+        background_file=background_file,
         focus_x=payload.focus_x,
         focus_y=payload.focus_y,
         zoom=payload.zoom,
@@ -602,8 +603,9 @@ def poem_limits() -> dict:
 @app.post("/api/poem/check")
 def poem_check(payload: PoemRequest) -> dict:
     """Validate the poem the same way generation will, before spending minutes on an image."""
+    has_background = bool(payload.template_id or payload.background_file)
     try:
-        lines = clean_poem(payload.poem_text)
+        lines = clean_poem(payload.poem_text, allow_empty=has_background)
     except PoemError as exc:
         return {"ok": False, "error": str(exc), "lines": [], "undrawable": []}
 
@@ -657,14 +659,14 @@ POEM_PREVIEW_DIR = config.OUTPUT_DIR / "_preview"
 def preview_poem(payload: PoemRequest) -> dict:
     """Render the on-screen card(s) as still images, fast, so people can check text/emoji/
     segment settings before spending time and API calls on a full reel."""
-    try:
-        lines = clean_poem(payload.poem_text)
-    except PoemError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     background_file = resolve_poem_background(payload)
     if background_file is None:
         raise HTTPException(status_code=400, detail="Pick a template or upload a background image to preview.")
+
+    try:
+        lines = clean_poem(payload.poem_text, allow_empty=True)
+    except PoemError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     avatar_file = None
     poet_name = ""

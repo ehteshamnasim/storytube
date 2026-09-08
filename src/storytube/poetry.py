@@ -354,9 +354,16 @@ def _load_font(script: str, size: int, text: str = "") -> ImageFont.FreeTypeFont
     return fallback or ImageFont.load_default(size)
 
 
-def clean_poem(poem_text: str) -> list[str]:
-    """Normalise pasted poetry into display lines, keeping the poet's own line breaks."""
+def clean_poem(poem_text: str, allow_empty: bool = False) -> list[str]:
+    """Normalise pasted poetry into display lines, keeping the poet's own line breaks.
+
+    allow_empty lets a photo be posted with no text on it at all - only meaningful when a
+    background image is actually supplied, since there is otherwise nothing to build a card
+    (or a mood/caption) from.
+    """
     if not poem_text or not poem_text.strip():
+        if allow_empty:
+            return []
         raise PoemError("Write a line or two of poetry first.")
 
     text = poem_text.replace("\r\n", "\n").replace("\r", "\n")
@@ -368,6 +375,8 @@ def clean_poem(poem_text: str) -> list[str]:
     lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.split("\n")]
     lines = [line for line in lines if line]
     if not lines:
+        if allow_empty:
+            return []
         raise PoemError("Write a line or two of poetry first.")
     if len(lines) > MAX_POEM_LINES:
         raise PoemError(
@@ -739,10 +748,26 @@ def render_poem_card(
     left = (base.width - width) // 2
     top = (base.height - height) // 2
     base = base.crop((left, top, left + width, top + height))
-    base = base.filter(ImageFilter.GaussianBlur(width * 0.005))
 
-    canvas = base.convert("RGBA")
     lines = strip_undrawable(lines)
+
+    if not lines:
+        # Just the photo, sharp - the blur below only exists to keep text legible, and
+        # there is no scrim/rule/credit either since none of them anchor to real text.
+        canvas = base.convert("RGBA")
+        if handle:
+            draw = ImageDraw.Draw(canvas)
+            handle_font = _load_font("latin", int(height * 0.020), handle)
+            handle_width = draw.textlength(handle, font=handle_font)
+            hx = (width - handle_width) / 2
+            hy = height - height * 0.06
+            draw.text((hx + 1, hy + 2), handle, font=handle_font, fill=(0, 0, 0, 150))
+            draw.text((hx, hy), handle, font=handle_font, fill=(250, 247, 240))
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        canvas.convert("RGB").save(out_path, quality=95)
+        return out_path
+
+    canvas = base.filter(ImageFilter.GaussianBlur(width * 0.005)).convert("RGBA")
     script = _script_of(" ".join(lines))
     measure = ImageDraw.Draw(canvas)
     font, rendered, line_height = _layout(measure, lines, script, width, height, text_scale)
@@ -914,23 +939,29 @@ def generate_poem_reel(
         if on_progress:
             on_progress(stage, message)
 
-    lines = clean_poem(poem_text)
+    own_image = options.background_file is not None
+    lines = clean_poem(poem_text, allow_empty=own_image)
+    if not lines and not own_image:
+        raise PoemError("Add a photo to post without any text, or write a line or two of poetry.")
     width, height = (int(p) for p in options.size.split("x"))
 
     out_dir = config.OUTPUT_DIR / name
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "poem.txt").write_text("\n".join(lines), encoding="utf-8")
 
-    own_image = options.background_file is not None
     report("planning", "Writing the caption…" if own_image else "Reading the poem and designing the image…")
-    try:
-        plan = plan_poem("\n".join(lines), options)
-    except Exception as exc:  # noqa: BLE001
-        # With a supplied image there is still a whole reel to make, so carry on without Gemini.
-        if not own_image:
-            raise
-        report("planning", f"Caption skipped ({type(exc).__name__}); using the poem as the caption")
+    if not lines:
+        # Nothing to plan a mood/caption from - it is just a photo.
         plan = _fallback_plan(lines)
+    else:
+        try:
+            plan = plan_poem("\n".join(lines), options)
+        except Exception as exc:  # noqa: BLE001
+            # With a supplied image there is still a whole reel to make, so carry on without Gemini.
+            if not own_image:
+                raise
+            report("planning", f"Caption skipped ({type(exc).__name__}); using the poem as the caption")
+            plan = _fallback_plan(lines)
     (out_dir / "plan.json").write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
 
     background = out_dir / "background.png"
@@ -970,7 +1001,8 @@ def generate_poem_reel(
     video_path = out_dir / "reel.mp4"
     voice_path: Optional[Path] = None
     line_timings: Optional[list[tuple[float, float]]] = None
-    if options.narrate:
+    narrate = options.narrate and bool(lines)  # nothing to read aloud on a text-free photo
+    if narrate:
         voice = options.voice or default_poem_voice(options.language)
         report("voice", f"Reading the poem aloud ({voice})…")
         voice_path = out_dir / "voice.mp3"
@@ -981,9 +1013,9 @@ def generate_poem_reel(
         spoken = get_audio_duration(voice_path)
         duration = min(MAX_REEL_SECONDS, max(MIN_REEL_SECONDS, spoken + VOICE_LEAD_IN + VOICE_LEAD_OUT))
     else:
-        duration = min(MAX_REEL_SECONDS, max(MIN_REEL_SECONDS, len(lines) * options.seconds_per_line))
+        duration = min(MAX_REEL_SECONDS, max(MIN_REEL_SECONDS, max(len(lines), 1) * options.seconds_per_line))
 
-    windows = _segment_windows(segments, duration, line_timings, VOICE_LEAD_IN if options.narrate else 0.0)
+    windows = _segment_windows(segments, duration, line_timings, VOICE_LEAD_IN if narrate else 0.0)
     durations = [max(0.6, end - start) for start, end in windows]
 
     segments_dir = out_dir / "segments"
@@ -1037,8 +1069,8 @@ def generate_poem_reel(
         "duration_seconds": round(duration, 1),
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "own_image": own_image,
-        "narrated": bool(options.narrate),
-        "voice": (options.voice or default_poem_voice(options.language)) if options.narrate else "",
+        "narrated": narrate,
+        "voice": (options.voice or default_poem_voice(options.language)) if narrate else "",
         "music_file": str(options.music_file) if options.music_file else "",
     }
     (out_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
