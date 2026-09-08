@@ -276,6 +276,7 @@ class PoemOptions:
     transition: str = "cut"
     transition_seconds: float = 0.5
     blur_background: bool = True
+    title: str = ""
 
 
 @dataclass
@@ -394,10 +395,25 @@ def plan_poem(poem_text: str, options: PoemOptions) -> dict:
     if not template_path.exists():
         raise FileNotFoundError(f"Prompt template not found: {template_path}")
 
+    title = options.title.strip()
+    # A title is usually given to name the source (a film, book, song...), which is worth
+    # writing for in English regardless of what language the text itself is in.
+    caption_language = "English" if title else options.language
+    title_block = (
+        f"TITLE / SOURCE HINT: {title}\n"
+        "Use this as a hint for what this text is from (a film, show, book, poem or song\n"
+        "it names) when writing the caption and hashtags, and name that source if it fits\n"
+        "naturally. Because a title was given, write the caption's closing sentence and\n"
+        "every hashtag in English, regardless of the text's own language.\n"
+        if title else ""
+    )
+
     prompt = (
         template_path.read_text(encoding="utf-8")
         .replace("{{STYLE}}", options.style)
         .replace("{{LANGUAGE}}", options.language)
+        .replace("{{CAPTION_LANGUAGE}}", caption_language)
+        .replace("{{TITLE_BLOCK}}", title_block)
         .replace("{{POEM_TEXT}}", poem_text)
     )
 
@@ -1014,8 +1030,12 @@ def generate_poem_reel(
         )
         spoken = get_audio_duration(voice_path)
         duration = min(MAX_REEL_SECONDS, max(MIN_REEL_SECONDS, spoken + VOICE_LEAD_IN + VOICE_LEAD_OUT))
+    elif lines:
+        duration = min(MAX_REEL_SECONDS, max(MIN_REEL_SECONDS, len(lines) * options.seconds_per_line))
     else:
-        duration = min(MAX_REEL_SECONDS, max(MIN_REEL_SECONDS, max(len(lines), 1) * options.seconds_per_line))
+        # No lines to pace against, so seconds_per_line is used directly as the whole
+        # reel's length instead - the only way to control it when there is no text.
+        duration = min(MAX_REEL_SECONDS, max(MIN_REEL_SECONDS, options.seconds_per_line))
 
     windows = _segment_windows(segments, duration, line_timings, VOICE_LEAD_IN if narrate else 0.0)
     durations = [max(0.6, end - start) for start, end in windows]

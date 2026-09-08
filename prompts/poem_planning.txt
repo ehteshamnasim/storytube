@@ -7,7 +7,7 @@ actually is before writing anything, because a movie quote tagged like poetry
 
 TEXT LANGUAGE: {{LANGUAGE}}
 VISUAL STYLE: {{STYLE}}
-
+{{TITLE_BLOCK}}
 THE TEXT:
 {{POEM_TEXT}}
 
@@ -43,22 +43,27 @@ palette
 caption
   An Instagram caption. Start with the text itself exactly as given, unchanged,
   keeping the original line breaks. Then a blank line, then one short sentence in
-  {{LANGUAGE}} that fits what the text actually is - inviting a response for a
-  poem, or a knowing nod for a quote people will recognise. Do not add hashtags
+  {{CAPTION_LANGUAGE}} that fits what the text actually is - inviting a response for
+  a poem, or a knowing nod for a quote people will recognise. Do not add hashtags
   here.
 
 hashtags
   Between 8 and 15 relevant hashtags as a single space-separated string, each
-  starting with #, matched to what this text actually is:
+  starting with # and written in {{CAPTION_LANGUAGE}}, matched to what this text
+  actually is:
   - A poem, couplet or shayari: broad poetry tags plus ones specific to its
     language and mood (e.g. #poetry #shayari #urdupoetry).
   - A movie or TV quote: tags like #moviequotes #cinema #filmquotes, plus the
-    film or show's own name ONLY if you clearly recognise the line and are
-    confident which title it is from - never guess a title.
-  - A book quote: #bookquotes #literature plus the author's name if confident.
-  - Song lyrics: #lyrics #music plus the song or artist if confident.
+    film or show's own name if a title/source hint was given above, or if you
+    clearly recognise the line and are confident which title it is from -
+    never guess a title otherwise.
+  - A book quote: #bookquotes #literature plus the author's name if confident
+    or given above.
+  - Song lyrics: #lyrics #music plus the song or artist if confident or given
+    above.
   - A motivational or generic quote with no clear source: #quotes #quoteoftheday
     and tags matching its actual theme.
   No banned or spammy tags, no repeated tags.
+
 
 Return only the JSON object.

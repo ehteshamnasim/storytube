@@ -376,6 +376,11 @@
                 <textarea id="poem-text" rows="5" placeholder="दिल की बात कहूँ तो कैसे कहूँ&#10;ये लफ़्ज़ भी अब साथ नहीं देते"></textarea>
               </div>
               <div class="field-row">
+                <label for="poem-title">Title / source <span class="optional">optional</span></label>
+                <input type="text" id="poem-title" placeholder="e.g. a film, show, book or song this is from" />
+                <div class="help-text">If you name it, the caption's closing line and every hashtag are written in English, and the source is named where it fits.</div>
+              </div>
+              <div class="field-row">
                 <label for="poem-language">Language</label>
                 <select id="poem-language">
                   <option value="Hindi">Hindi</option>
@@ -977,7 +982,7 @@
         <div class="help-text">On by default, keeps the words readable over a busy photo. Turn off for a sharp background even with a quote on it.</div>
       </div>
       <div class="field-row">
-        <div class="label-row"><label>Seconds per line</label><span class="counter" id="poem-pace-out">2.6s</span></div>
+        <div class="label-row"><label id="poem-pace-label">Seconds per line</label><span class="counter" id="poem-pace-out">2.6s</span></div>
         <input type="range" id="poem-pace" min="1.5" max="6" step="0.1" value="2.6" />
         <div class="help-text" id="poem-duration-hint">Reel will be about 5 seconds.</div>
       </div>

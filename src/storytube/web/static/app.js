@@ -1122,7 +1122,34 @@ function poemLines() {
 }
 
 function poemDuration(lines) {
-  return Math.min(60, Math.max(4, lines.length * parseFloat($("poem-pace").value)));
+  const pace = parseFloat($("poem-pace").value);
+  return Math.min(60, Math.max(4, lines.length ? lines.length * pace : pace));
+}
+
+function updatePoemPaceMode(lines) {
+  const imageOnly = !lines.length && hasInstantBackground();
+  const pace = $("poem-pace");
+  const wasImageOnly = pace.dataset.mode === "length";
+  if (imageOnly !== wasImageOnly) {
+    if (imageOnly) {
+      pace.dataset.perlineValue = pace.value;
+      pace.min = "4";
+      pace.max = "60";
+      pace.step = "1";
+      pace.value = pace.dataset.lengthValue || "8";
+      pace.dataset.mode = "length";
+      $("poem-pace-label").textContent = "Video length";
+    } else {
+      pace.dataset.lengthValue = pace.value;
+      pace.min = "1.5";
+      pace.max = "6";
+      pace.step = "0.1";
+      pace.value = pace.dataset.perlineValue || "2.6";
+      pace.dataset.mode = "perline";
+      $("poem-pace-label").textContent = "Seconds per line";
+    }
+  }
+  $("poem-pace-out").textContent = imageOnly ? `${Math.round(parseFloat(pace.value))}s` : `${Number(pace.value).toFixed(1)}s`;
 }
 
 function renderPoemPreview() {
@@ -1133,9 +1160,8 @@ function renderPoemPreview() {
   syncPoemReaders();
   $("poem-counter").textContent = `${lines.length} ${lines.length === 1 ? "line" : "lines"} · ${chars} characters`;
   $("poem-counter").classList.toggle("over", chars > POEM_LIMITS.max_chars || lines.length > POEM_LIMITS.max_lines);
-  $("poem-duration-hint").textContent = lines.length
-    ? `Reel will be about ${Math.round(poemDuration(lines))} seconds.`
-    : "Reel length follows the number of lines.";
+  updatePoemPaceMode(lines);
+  $("poem-duration-hint").textContent = `Reel will be about ${Math.round(poemDuration(lines))} seconds.`;
 
   const preview = $("poem-preview");
   preview.innerHTML = "";
@@ -1247,6 +1273,7 @@ function scriptOf(text) {
 function gatherPoemOptions() {
   return {
     poem_text: $("poem-text").value,
+    title: $("poem-title").value.trim(),
     language: $("poem-language").value,
     style: $("poem-style").value,
     size: $("poem-size").value,
@@ -1616,6 +1643,7 @@ function resetPoemForm() {
   discardPendingPoemDraft();
   $("poem-text").value = "";
   $("poem-text").dispatchEvent(new Event("input", { bubbles: true }));
+  $("poem-title").value = "";
   clearPoemBackground();
   $("poem-seed").value = 0;
   $("poem-seed-out").textContent = "0";
@@ -1804,7 +1832,9 @@ function setupPoetry() {
   $("poem-blur-background").addEventListener("change", savePoemPrefs);
 
   $("poem-pace").addEventListener("input", (e) => {
-    $("poem-pace-out").textContent = `${Number(e.target.value).toFixed(1)}s`;
+    $("poem-pace-out").textContent = e.target.dataset.mode === "length"
+      ? `${Math.round(e.target.value)}s`
+      : `${Number(e.target.value).toFixed(1)}s`;
   });
   $("poem-music-volume").addEventListener("input", (e) => {
     $("poem-music-out").textContent = Number(e.target.value) === 0 ? "Off" : `${Math.round(e.target.value * 100)}%`;

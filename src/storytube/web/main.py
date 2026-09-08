@@ -417,6 +417,7 @@ def start_poem(payload: PoemRequest) -> dict:
         transition=payload.transition,
         transition_seconds=payload.transition_seconds,
         blur_background=payload.blur_background,
+        title=payload.title.strip(),
     )
     job = jobs.create_poem_job(name, "\n".join(lines), options)
     return {"job_id": job.id, "name": name, "lines": lines}

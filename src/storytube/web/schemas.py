@@ -80,6 +80,7 @@ class PoemRequest(BaseModel):
     transition: str = "cut"
     transition_seconds: float = 0.5
     blur_background: bool = True
+    title: str = ""
 
 
 class GenerateRequest(BaseModel):
