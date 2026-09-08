@@ -10,6 +10,8 @@ VISUAL STYLE: {{STYLE}}
 {{TITLE_BLOCK}}
 THE TEXT:
 {{POEM_TEXT}}
+(If the above is blank, this is an image-only post with no quote - base everything
+on the title/source hint instead, if one was given above.)
 
 Return JSON with these fields.
 
@@ -41,11 +43,13 @@ palette
   matching background music. Example: "deep indigo, amber, warm grey".
 
 caption
-  An Instagram caption. Start with the text itself exactly as given, unchanged,
-  keeping the original line breaks. Then a blank line, then one short sentence in
-  {{CAPTION_LANGUAGE}} that fits what the text actually is - inviting a response for
-  a poem, or a knowing nod for a quote people will recognise. Do not add hashtags
-  here.
+  An Instagram caption. If there is text above, start with it exactly as given,
+  unchanged, keeping the original line breaks, then a blank line, then one short
+  sentence in {{CAPTION_LANGUAGE}} that fits what the text actually is - inviting a
+  response for a poem, or a knowing nod for a quote people will recognise. If there
+  is no text (an image-only post), skip straight to that one short sentence in
+  {{CAPTION_LANGUAGE}}, written about the title/source hint alone. Do not add
+  hashtags here.
 
 hashtags
   Between 8 and 15 relevant hashtags as a single space-separated string, each

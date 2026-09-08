@@ -968,8 +968,8 @@ def generate_poem_reel(
     (out_dir / "poem.txt").write_text("\n".join(lines), encoding="utf-8")
 
     report("planning", "Writing the caption…" if own_image else "Reading the poem and designing the image…")
-    if not lines:
-        # Nothing to plan a mood/caption from - it is just a photo.
+    if not lines and not options.title.strip():
+        # Nothing to plan a mood/caption from - it is just a photo with no title hint either.
         plan = _fallback_plan(lines)
     else:
         try:
